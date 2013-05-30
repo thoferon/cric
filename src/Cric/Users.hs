@@ -12,17 +12,17 @@ import Cric
 
 data UserOptions = UserOptions {
   loginGroup :: Maybe String
-  , groups     :: [String]
-  , uid        :: Maybe Int
-  , shell      :: Maybe String
+  , groups   :: [String]
+  , uid      :: Maybe Int
+  , shell    :: Maybe String
 } deriving Show
 
 defaultUserOptions :: UserOptions
 defaultUserOptions = UserOptions {
   loginGroup = Nothing
-  , groups     = []
-  , uid        = Nothing
-  , shell      = Nothing
+  , groups   = []
+  , uid      = Nothing
+  , shell    = Nothing
 }
 
 duo :: UserOptions
@@ -32,10 +32,10 @@ createUser :: String -> UserOptions -> Cric Result
 createUser u opts = do
     log LInfo $ "Creating user " ++ u ++ " ..."
     let cmdWithOptions = addLoginGroup (loginGroup opts)
-                         . addGroups (groups opts)
-                         . addUID (uid opts)
-                         . addShell (shell opts)
-                         $ "adduser"
+                       . addGroups (groups opts)
+                       . addUID (uid opts)
+                       . addShell (shell opts)
+                       $ "adduser"
     exec $ cmdWithOptions ++ " " ++ u
   where
     addShell Nothing        = id

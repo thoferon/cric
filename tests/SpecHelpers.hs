@@ -24,11 +24,11 @@ import System.IO.Temp
 import Control.Monad
 import Control.Monad.Trans
 
-type MaybeExecCommandsFunc = [String] -> Maybe (IO (Int, [BL.ByteString]))
-type MaybeSendFileFunc     = Int -> FilePath -> FilePath -> Maybe (IO Integer)
+type ExecCommandsMock = [String] -> Maybe (IO (Int, [BL.ByteString]))
+type SendFileMock     = Int -> FilePath -> FilePath -> Maybe (IO Integer)
 
-data SshMock = SshMock { maybeExecCommandsFuncs :: [MaybeExecCommandsFunc]
-                       , maybeSendFileFuncs     :: [MaybeSendFileFunc] }
+data SshMock = SshMock { execCommandsMocks :: [ExecCommandsMock]
+                       , sendFileMocks     :: [SendFileMock] }
 
 instance Read LogLevel where
   readsPrec _ str
@@ -41,15 +41,20 @@ instance Read LogLevel where
     | otherwise = []
 
 instance SshSession SshMock where
-  sshExecCommands (maybeExecCommandsFuncs -> fs) cmds =
+  sshExecCommands (execCommandsMocks -> fs) cmds =
       foldl' (\acc f -> fromMaybe acc $ f cmds) (dfl cmds) fs
-    where dfl cmds = return (0, "no mock found: " : packedCmds cmds)
+    where dfl cmds = return (42, "no mock found: " : packedCmds cmds)
           packedCmds = map (TLE.encodeUtf8 . TL.pack)
-  sshSendFile (maybeSendFileFuncs -> fs) perm from to =
+  sshSendFile (sendFileMocks -> fs) perm from to =
     foldl' (\acc f -> fromMaybe acc $ f perm from to) (return 0) fs
 
 defaultSshMock :: SshMock
 defaultSshMock = SshMock [] []
+
+mockCommand :: String -> (Int, [BL.ByteString]) -> SshMock -> SshMock
+mockCommand cmd result sshMock =
+  let mock cmds = if any (cmd `isInfixOf`) cmds then Just $ return result else Nothing
+  in sshMock { execCommandsMocks = mock : execCommandsMocks sshMock  }
 
 testInstall :: Cric a -> Logger -> Context -> Server -> IO a
 testInstall = testInstallWith defaultSshMock
@@ -59,6 +64,9 @@ testInstallWith mock cric logger context server = runCric cric logger context se
 
 testCric :: Cric a -> IO a
 testCric cric = liftIO $ testInstall cric (\_ _ -> return ()) defaultContext defaultServer
+
+testCricWith :: SshSession s => s -> Cric a -> IO a
+testCricWith mock cric = liftIO $ testInstallWith mock cric (\_ _ -> return ()) defaultContext defaultServer
 
 -- it will not automatically closed the handles (good enough for tests, at least for now)
 -- reading the logs will though

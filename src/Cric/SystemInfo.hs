@@ -14,7 +14,7 @@ import qualified Data.ByteString.Lazy as BL
 
 data OperatingSystem = Linux
                      | FreeBSD
-                     | Unknown BL.ByteString
+                     | UnknownOS BL.ByteString
                      deriving (Show, Eq)
 
 getOS :: Cric OperatingSystem
@@ -24,7 +24,7 @@ getOS = do
   return $ case name of
     "GNU/Linux" -> Linux
     "FreeBSD" -> FreeBSD
-    other -> Unknown other
+    other -> UnknownOS other
 
 firstLine :: BL.ByteString -> BL.ByteString
 firstLine = BL.takeWhile isNotNewLine

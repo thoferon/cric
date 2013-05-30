@@ -18,9 +18,10 @@ package-url:         http://hub.darcs.net/thoferon/cric
 
 library
   exposed-modules:     Cric, Cric.Core, Cric.TypeDefs,
-                       Cric.SystemInfo, Cric.Packages,
+                       Cric.SystemInfo, Cric.Packages, Cric.Users
                        Cric.Platform
-  ghc-options:         -Wall
+  ghc-options:         -Wall -Werror
+  hs-source-dirs:      src
   -- other-modules:
   build-depends:       base ==4.5.*,
                        libssh2 ==0.2.*,
@@ -35,6 +36,7 @@ library
 test-suite unit
   type:                exitcode-stdio-1.0
   main-is:             Suite.hs
+  hs-source-dirs:      tests, src
   build-depends:       base ==4.5.*,
                        libssh2 ==0.2.*,
                        mtl ==2.1.*,
@@ -47,5 +49,3 @@ test-suite unit
                        hspec ==1.5.*,
                        QuickCheck ==2.6.*,
                        temporary ==1.1.*
-
-  hs-source-dirs:      tests, .
