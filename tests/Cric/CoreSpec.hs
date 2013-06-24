@@ -11,6 +11,9 @@ import Control.Monad.Trans
 import Data.List
 import Data.ByteString.Lazy.Char8 ()
 
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TLE
+
 test :: Spec
 test = do
   let server = defaultServer { hostname = "localhost" }
@@ -33,10 +36,10 @@ test = do
       result `shouldBe` Error 1 "test2"
 
     it "adds the context" $ do
-      let cric = exec "echo test"
+      let cric = exec "echo \"test\" 'test'"
       let context' = defaultContext { currentUser = "user", currentDir = "dir", currentEnv = [("a", "1")] }
-      let mockFunc cmds = if "cd dir; export a=1; su user -c echo test" `elem` cmds
-                          then Just $ return (0,  ["successful"])
+      let mockFunc cmds = if "cd dir; export a=1; su user -c \"echo \\\"test\\\" 'test'\"" `elem` cmds
+                          then Just $ return (0, ["successful"])
                           else Nothing
       let sshMock = SshMock [mockFunc] []
       result <- liftIO $ testInstallWith sshMock cric logger context' server

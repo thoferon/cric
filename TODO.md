@@ -31,7 +31,3 @@ Autodetection of the system used (initd, upstart, ...)
 ## Users and groups
 
 Creation, removal of groups. Adding a user to a group, ...
-
-## Context of execution
-
-Should escape some characters to always make the command valid.

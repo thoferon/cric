@@ -33,9 +33,10 @@ import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
 
 import Data.List (isPrefixOf, partition)
+import Data.String.Utils (replace)
 import Control.Monad (liftM)
 import Control.Monad.Trans (MonadIO(..))
-import Network.SSH.Client.LibSSH2 (withSSH2, withSSH2User)
+import Network.SSH.Client.LibSSH2
 import Data.ByteString.Lazy.Char8 () -- For OverloadedStrings
 
 data Result = Success BL.ByteString
@@ -80,12 +81,13 @@ install cric logger context server =
                (port server)
                (runCric cric logger context server)
     PasswordAuthentication ->
-      withSSH2User (knownHostsPath server)
-                   (user server)
-                   (password server)
-                   (hostname server)
-                   (port server)
-                   (runCric cric logger context server)
+      fail "PasswordAuthentication has been disabled (see README.md for more information)"
+--      withSSH2User (knownHostsPath server)
+--                   (user server)
+--                   (password server)
+--                   (hostname server)
+--                   (port server)
+--                   (runCric cric logger context server)
 
 installOn :: Cric a -> Server -> IO a
 installOn cric server = install cric stdoutLogger defaultContext server
@@ -119,7 +121,7 @@ exec cmd = do
       d  -> "cd " ++ d ++ "; " ++ c
     addUser context c = case currentUser context of
       "" -> c
-      u  -> "su " ++ u ++ " -c " ++ c
+      u  -> "su " ++ u ++ " -c \"" ++ replace "\"" "\\\"" c ++ "\""
 
 run :: String -> Cric BL.ByteString
 run cmd = outputFromResult `liftM` exec cmd

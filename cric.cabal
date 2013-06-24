@@ -31,6 +31,7 @@ library
                        directory ==1.1.*,
                        MissingH ==1.2.*,
                        text ==0.11.*,
+                       MissingH ==1.2.*,
                        word8
 
 test-suite unit
