@@ -1,9 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module SpecHelpers (
-  module SpecHelpers
-  ) where
+module SpecHelpers where
 
 import Cric.Core
 import Cric.TypeDefs
@@ -60,7 +58,7 @@ testInstall :: Cric a -> Logger -> Context -> Server -> IO a
 testInstall = testInstallWith defaultSshMock
 
 testInstallWith :: SshSession s => s -> Cric a -> Logger -> Context -> Server -> IO a
-testInstallWith mock cric logger context server = runCric cric logger context server mock
+testInstallWith mock cric logger context server = runCric cric logger context server $ return mock
 
 testCric :: Cric a -> IO a
 testCric cric = liftIO $ testInstall cric (\_ _ -> return ()) defaultContext defaultServer

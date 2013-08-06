@@ -56,38 +56,47 @@ data FileTransferOptions = FileTransferOptions {
   , md5Hash :: Maybe String
 } deriving Show
 
-newtype Cric a = Cric { runCric :: forall s. SshSession s => Logger -> Context -> Server -> s -> IO a }
+newtype Cric a = Cric {
+    runCric :: forall s. SshSession s
+            => Logger
+            -> Context
+            -> Server
+            -> IO s
+            -> IO a
+  }
 
 instance Monad Cric where
   return x = Cric $ \_ _ _ _ -> return x
-  cric >>= f = Cric $ \logger context server session -> do
-    x <- runCric cric logger context server session
-    runCric (f x) logger context server session
+  cric >>= f = Cric $ \logger context server connect -> do
+    x <- runCric cric logger context server connect
+    runCric (f x) logger context server connect
   fail msg = Cric $ fail msg
 
 instance MonadIO Cric where
   liftIO ioAction = Cric $ \_ _ _ _ -> ioAction
 
 install :: Cric a -> Logger -> Context -> Server -> IO a
-install cric logger context server =
-  case authType server of
-    KeysAuthentication ->
-      withSSH2 (knownHostsPath server)
-               (publicKeyPath server)
-               (privateKeyPath server)
-               (passphrase server)
-               (user server)
-               (hostname server)
-               (port server)
-               (runCric cric logger context server)
-    PasswordAuthentication ->
-      fail "PasswordAuthentication has been disabled (see README.md for more information)"
---      withSSH2User (knownHostsPath server)
---                   (user server)
---                   (password server)
---                   (hostname server)
---                   (port server)
---                   (runCric cric logger context server)
+install cric logger context server = runCric cric logger context server connect
+  where
+    connect :: IO Session
+    connect = case authType server of
+                KeysAuthentication ->
+                  withSSH2 (knownHostsPath server)
+                           (publicKeyPath server)
+                           (privateKeyPath server)
+                           (passphrase server)
+                           (user server)
+                           (hostname server)
+                           (port server)
+                           return
+                PasswordAuthentication ->
+                  fail "PasswordAuthentication has been disabled (see README.md for more information)"
+--                 withSSH2User (knownHostsPath server)
+--                              (user server)
+--                              (password server)
+--                              (hostname server)
+--                              (port server)
+--                              (runCric cric logger context server)
 
 installOn :: Cric a -> Server -> IO a
 installOn cric server = install cric stdoutLogger defaultContext server
@@ -106,7 +115,8 @@ exec cmd = do
     log LDebug $ "Executed: " ++ cmd' ++ "\nOutput: " ++ (TL.unpack . TL.stripEnd . TLE.decodeUtf8 $ output)
     return res
   where
-    exec' cmdWithContext = Cric $ \_ _ _ session -> do
+    exec' cmdWithContext = Cric $ \_ _ _ connect -> do
+      session <- connect
       (code, outputs) <- sshExecCommands session [cmdWithContext]
       let output = BL.concat outputs
       return $ if code == 0 then
@@ -141,7 +151,8 @@ dfto = defaultFileTransferOptions
 sendFile :: FilePath -> FilePath -> FileTransferOptions -> Cric (Either Integer Bool)
 sendFile from to options = do
     log LInfo $ "Transferring file from `" ++ from ++ "` to `" ++ to ++ "` ..."
-    bytes <- Cric $ \_ _ _ session ->
+    bytes <- Cric $ \_ _ _ connect -> do
+      session <- connect
       sshSendFile session (permissions options) from to
     log LInfo $ show bytes ++ " bytes transferred."
 
