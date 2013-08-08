@@ -1,3 +1,6 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+
 module Cric.TypeDefs (
   Server(..)
   , AuthenticationType(..)
@@ -12,6 +15,8 @@ module Cric.TypeDefs (
   , autoServer
   ) where
 
+import Control.Monad.Trans
+
 import System.Directory
 import System.FilePath
 
@@ -19,34 +24,34 @@ import Network.SSH.Client.LibSSH2 (Session, execCommands, scpSendFile)
 import qualified Data.ByteString.Lazy as BL
 
 -- For tests, see tests/SpecHelpers.hs
-class SshSession s where
-  sshExecCommands :: s -> [String] -> IO (Int, [BL.ByteString])
-  sshSendFile :: s -> Int -> FilePath -> FilePath -> IO Integer
+class SshSession m s where
+  sshExecCommands :: s -> [String] -> m (Int, [BL.ByteString])
+  sshSendFile :: s -> Int -> FilePath -> FilePath -> m Integer
 
-instance SshSession Session where
-  sshExecCommands = execCommands
-  sshSendFile = scpSendFile
+instance MonadIO m => SshSession m Session where
+  sshExecCommands session cmds = liftIO $ execCommands session cmds
+  sshSendFile session size src dest = liftIO $ scpSendFile session size src dest
 
 data LogLevel = LDebug | LInfo | LNotice | LWarning | LError | LPanic
               deriving (Show, Eq)
 
-type Logger = LogLevel -> String -> IO ()
+type Logger m = LogLevel -> String -> m ()
 
-stdoutLogger :: Logger
-stdoutLogger LDebug   _   = return ()
-stdoutLogger LInfo    msg = putStrLn $ "[Info] "    ++ msg
-stdoutLogger LNotice  msg = putStrLn $ "[Notice] "  ++ msg
-stdoutLogger LWarning msg = putStrLn $ "[Warning] " ++ msg
-stdoutLogger LError   msg = putStrLn $ "[Error] "   ++ msg
-stdoutLogger LPanic   msg = putStrLn $ "[Panic] "   ++ msg
+stdoutLogger :: MonadIO m => Logger m
+stdoutLogger LDebug   _   = liftIO $ return ()
+stdoutLogger LInfo    msg = liftIO . putStrLn $ "[Info] "    ++ msg
+stdoutLogger LNotice  msg = liftIO . putStrLn $ "[Notice] "  ++ msg
+stdoutLogger LWarning msg = liftIO . putStrLn $ "[Warning] " ++ msg
+stdoutLogger LError   msg = liftIO . putStrLn $ "[Error] "   ++ msg
+stdoutLogger LPanic   msg = liftIO . putStrLn $ "[Panic] "   ++ msg
 
-debugLogger :: Logger
-debugLogger LDebug   msg = putStrLn $ "[Debug] "   ++ msg
-debugLogger LInfo    msg = putStrLn $ "[Info] "    ++ msg
-debugLogger LNotice  msg = putStrLn $ "[Notice] "  ++ msg
-debugLogger LWarning msg = putStrLn $ "[Warning] " ++ msg
-debugLogger LError   msg = putStrLn $ "[Error] "   ++ msg
-debugLogger LPanic   msg = putStrLn $ "[Panic] "   ++ msg
+debugLogger :: MonadIO m => Logger m
+debugLogger LDebug   msg = liftIO . putStrLn $ "[Debug] "   ++ msg
+debugLogger LInfo    msg = liftIO . putStrLn $ "[Info] "    ++ msg
+debugLogger LNotice  msg = liftIO . putStrLn $ "[Notice] "  ++ msg
+debugLogger LWarning msg = liftIO . putStrLn $ "[Warning] " ++ msg
+debugLogger LError   msg = liftIO . putStrLn $ "[Error] "   ++ msg
+debugLogger LPanic   msg = liftIO . putStrLn $ "[Panic] "   ++ msg
 
 data AuthenticationType = KeysAuthentication
                         | PasswordAuthentication

@@ -3,6 +3,7 @@ module Cric (
   Server(..), AuthenticationType(..)
   , Context(..)
   , Cric
+  , CricT(..)
   , Result(..)
   , Logger, LogLevel(..)
   , FileTransferOptions(..)
@@ -12,6 +13,7 @@ module Cric (
   , stdoutLogger, debugLogger
   , defaultFileTransferOptions, dfto
   -- Functions
+  , runCric
   , install, installOn
   , exec, run
   , isSuccess, outputFromResult

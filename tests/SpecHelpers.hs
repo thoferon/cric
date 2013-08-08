@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module SpecHelpers where
 
@@ -38,7 +40,7 @@ instance Read LogLevel where
     | "LPanic"   `isPrefixOf` str = [(LPanic,   drop 6 str)]
     | otherwise = []
 
-instance SshSession SshMock where
+instance SshSession IO SshMock where
   sshExecCommands (execCommandsMocks -> fs) cmds =
       foldl' (\acc f -> fromMaybe acc $ f cmds) (dfl cmds) fs
     where dfl cmds = return (42, "no mock found: " : packedCmds cmds)
@@ -54,21 +56,21 @@ mockCommand cmd result sshMock =
   let mock cmds = if any (cmd `isInfixOf`) cmds then Just $ return result else Nothing
   in sshMock { execCommandsMocks = mock : execCommandsMocks sshMock  }
 
-testInstall :: Cric a -> Logger -> Context -> Server -> IO a
+testInstall :: Cric a -> Logger IO -> Context -> Server -> IO a
 testInstall = testInstallWith defaultSshMock
 
-testInstallWith :: SshSession s => s -> Cric a -> Logger -> Context -> Server -> IO a
-testInstallWith mock cric logger context server = runCric cric logger context server $ return mock
+testInstallWith :: SshSession IO s => s -> Cric a -> Logger IO -> Context -> Server -> IO a
+testInstallWith mock cric logger context server = runCricT cric logger context server $ return mock
 
 testCric :: Cric a -> IO a
 testCric cric = liftIO $ testInstall cric (\_ _ -> return ()) defaultContext defaultServer
 
-testCricWith :: SshSession s => s -> Cric a -> IO a
+testCricWith :: SshSession IO s => s -> Cric a -> IO a
 testCricWith mock cric = liftIO $ testInstallWith mock cric (\_ _ -> return ()) defaultContext defaultServer
 
 -- it will not automatically closed the handles (good enough for tests, at least for now)
 -- reading the logs will though
-testLogger :: IO (IO [(LogLevel, String)], Logger)
+testLogger :: IO (IO [(LogLevel, String)], Logger IO)
 testLogger = do
   tmpDir <- getTemporaryDirectory
   (path, handle) <- openTempFile tmpDir "cric-log-.test"
