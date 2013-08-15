@@ -7,6 +7,7 @@ module Cric.Users (
 import Prelude hiding (log)
 
 import Data.List (foldl')
+import Data.Default
 
 import Cric
 
@@ -27,6 +28,9 @@ defaultUserOptions = UserOptions {
 
 duo :: UserOptions
 duo = defaultUserOptions
+
+instance Default UserOptions where
+  def = duo
 
 createUser :: String -> UserOptions -> Cric Result
 createUser u opts = do

@@ -40,7 +40,7 @@ instance Read LogLevel where
     | "LPanic"   `isPrefixOf` str = [(LPanic,   drop 6 str)]
     | otherwise = []
 
-instance SshSession IO SshMock where
+instance SshSession SshMock where
   sshExecCommands (execCommandsMocks -> fs) cmds =
       foldl' (\acc f -> fromMaybe acc $ f cmds) (dfl cmds) fs
     where dfl cmds = return (42, "no mock found: " : packedCmds cmds)
@@ -59,13 +59,14 @@ mockCommand cmd result sshMock =
 testInstall :: Cric a -> Logger IO -> Context -> Server -> IO a
 testInstall = testInstallWith defaultSshMock
 
-testInstallWith :: SshSession IO s => s -> Cric a -> Logger IO -> Context -> Server -> IO a
-testInstallWith mock cric logger context server = runCricT cric logger context server $ return mock
+testInstallWith :: SshSession s => s -> Cric a -> Logger IO -> Context -> Server -> IO a
+testInstallWith mock cric logger context server = runCricT cric logger context server executor
+  where executor f = f mock
 
 testCric :: Cric a -> IO a
 testCric cric = liftIO $ testInstall cric (\_ _ -> return ()) defaultContext defaultServer
 
-testCricWith :: SshSession IO s => s -> Cric a -> IO a
+testCricWith :: SshSession s => s -> Cric a -> IO a
 testCricWith mock cric = liftIO $ testInstallWith mock cric (\_ _ -> return ()) defaultContext defaultServer
 
 -- it will not automatically closed the handles (good enough for tests, at least for now)

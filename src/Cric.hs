@@ -7,6 +7,7 @@ module Cric (
   , Result(..)
   , Logger, LogLevel(..)
   , FileTransferOptions(..)
+  , Executor
   -- Factories
   , defaultServer, autoServer
   , defaultContext

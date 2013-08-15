@@ -7,6 +7,7 @@ module Cric.Core (
   , CricT(..)
   , Result(..)
   , FileTransferOptions(..)
+  , Executor
   , runCric
   , install
   , installOn
@@ -35,6 +36,7 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
 
+import Data.Default
 import Data.List (isPrefixOf, partition)
 import Data.String.Utils (replace)
 import Control.Monad (liftM)
@@ -59,20 +61,22 @@ data FileTransferOptions = FileTransferOptions {
   , md5Hash :: Maybe String
 } deriving Show
 
+type Executor s m = forall a. (s -> IO a) -> m a
+
 newtype CricT m a = CricT {
-    runCricT :: forall s. SshSession m s
+    runCricT :: forall s. SshSession s
              => Logger m
              -> Context
              -> Server
-             -> m s
+             -> Executor s m
              -> m a
   }
 
 instance Monad m => Monad (CricT m) where
   return x = CricT $ \_ _ _ _ -> return x
-  cric >>= f = CricT $ \logger context server connect -> do
-    x <- runCricT cric logger context server connect
-    runCricT (f x) logger context server connect
+  cric >>= f = CricT $ \logger context server executor -> do
+    x <- runCricT cric logger context server executor
+    runCricT (f x) logger context server executor
   fail msg = CricT $ fail msg
 
 instance MonadTrans CricT where
@@ -83,31 +87,31 @@ instance MonadIO m => MonadIO (CricT m) where
 
 type Cric a = CricT IO a
 
-runCric :: Cric a -> (forall s. SshSession IO s => Logger IO -> Context -> Server -> IO s -> IO a)
+runCric :: Cric a -> (forall s. SshSession s => Logger IO -> Context -> Server -> Executor s IO -> IO a)
 runCric = runCricT
 
 install :: MonadIO m => CricT m a -> Logger m -> Context -> Server -> m a
-install cric logger context server = runCricT cric logger context server connect
+install cric logger context server = runCricT cric logger context server executor
   where
-    connect :: MonadIO m => m Session
-    connect = liftIO $ case authType server of
-                KeysAuthentication ->
-                  withSSH2 (knownHostsPath server)
-                           (publicKeyPath server)
-                           (privateKeyPath server)
-                           (passphrase server)
-                           (user server)
-                           (hostname server)
-                           (port server)
-                           return
-                PasswordAuthentication ->
-                  fail "PasswordAuthentication has been disabled (see README.md for more information)"
---                 withSSH2User (knownHostsPath server)
---                              (user server)
---                              (password server)
---                              (hostname server)
---                              (port server)
---                              (runCric cric logger context server)
+    executor :: MonadIO m => Executor Session m
+    executor f = liftIO $ case authType server of
+                   KeysAuthentication ->
+                     withSSH2 (knownHostsPath server)
+                              (publicKeyPath server)
+                              (privateKeyPath server)
+                              (passphrase server)
+                              (user server)
+                              (hostname server)
+                              (port server)
+                              f
+                   PasswordAuthentication ->
+                     fail "PasswordAuthentication has been disabled (see README.md for more information)"
+--                   withSSH2User (knownHostsPath server)
+--                                (user server)
+--                                (password server)
+--                                (hostname server)
+--                                (port server)
+--                                (runCric cric logger context server)
 
 installOn :: MonadIO m => CricT m a -> Server -> m a
 installOn cric server = install cric stdoutLogger defaultContext server
@@ -115,7 +119,7 @@ installOn cric server = install cric stdoutLogger defaultContext server
 exec :: Monad m => String -> CricT m Result
 exec cmd = do
     context <- getContext
-    let cmd' = addDir context . addEnv (currentEnv context) . addUser context $ cmd
+    let cmd' = addUser context . addDir context . addEnv (currentEnv context) $ cmd
     log LDebug $ "Executing " ++ cmd' ++ " ..."
     res <- exec' cmd'
     let output = case res of
@@ -126,9 +130,8 @@ exec cmd = do
     log LDebug $ "Executed: " ++ cmd' ++ "\nOutput: " ++ (TL.unpack . TL.stripEnd . TLE.decodeUtf8 $ output)
     return res
   where
-    exec' cmdWithContext = CricT $ \_ _ _ connect -> do
-      session <- connect
-      (code, outputs) <- sshExecCommands session [cmdWithContext]
+    exec' cmdWithContext = CricT $ \_ _ _ executor -> do
+      (code, outputs) <- executor $ \session -> sshExecCommands session [cmdWithContext]
       let output = BL.concat outputs
       return $ if code == 0 then
         Success output
@@ -142,7 +145,7 @@ exec cmd = do
       d  -> "cd " ++ d ++ "; " ++ c
     addUser context c = case currentUser context of
       "" -> c
-      u  -> "su " ++ u ++ " -c \"" ++ replace "\"" "\\\"" c ++ "\""
+      u  -> "sudo su " ++ u ++ " -c \'" ++ replace "\'" "\\\'" c ++ "\'"
 
 run :: Monad m => String -> CricT m BL.ByteString
 run cmd = outputFromResult `liftM` exec cmd
@@ -156,15 +159,17 @@ defaultFileTransferOptions = FileTransferOptions {
 dfto :: FileTransferOptions
 dfto = defaultFileTransferOptions
 
+instance Default FileTransferOptions where
+  def = dfto
+
 -- returns either the number of bytes tranferred
 -- or True/False whether the transfer has been successful
 -- if the md5 command is available
 sendFile :: Monad m => FilePath -> FilePath -> FileTransferOptions -> CricT m (Either Integer Bool)
 sendFile from to options = do
     log LInfo $ "Transferring file from `" ++ from ++ "` to `" ++ to ++ "` ..."
-    bytes <- CricT $ \_ _ _ connect -> do
-      session <- connect
-      sshSendFile session (permissions options) from to
+    bytes <- CricT $ \_ _ _ executor -> do
+      executor $ \session -> sshSendFile session (permissions options) from to
     log LInfo $ show bytes ++ " bytes transferred."
 
     let lbytes = return $ Left bytes

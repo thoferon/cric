@@ -24,13 +24,13 @@ import Network.SSH.Client.LibSSH2 (Session, execCommands, scpSendFile)
 import qualified Data.ByteString.Lazy as BL
 
 -- For tests, see tests/SpecHelpers.hs
-class SshSession m s where
-  sshExecCommands :: s -> [String] -> m (Int, [BL.ByteString])
-  sshSendFile :: s -> Int -> FilePath -> FilePath -> m Integer
+class SshSession s where
+  sshExecCommands :: s -> [String] -> IO (Int, [BL.ByteString])
+  sshSendFile :: s -> Int -> FilePath -> FilePath -> IO Integer
 
-instance MonadIO m => SshSession m Session where
-  sshExecCommands session cmds = liftIO $ execCommands session cmds
-  sshSendFile session size src dest = liftIO $ scpSendFile session size src dest
+instance SshSession Session where
+  sshExecCommands session cmds = execCommands session cmds
+  sshSendFile session size src dest = scpSendFile session size src dest
 
 data LogLevel = LDebug | LInfo | LNotice | LWarning | LError | LPanic
               deriving (Show, Eq)

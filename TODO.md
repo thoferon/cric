@@ -1,11 +1,5 @@
 # To-Do
 
-## Error-handling
-
-If the SSH connection fails or something, it could create a new session and retry the last action.
-
-Maybe 3 tries before crashing.
-
 ## Logging
 
 Simple support for colours when stdout = tty. (stdoutLogger and debugLogger)

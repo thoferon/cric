@@ -38,7 +38,7 @@ test = do
     it "adds the context" $ do
       let cric = exec "echo \"test\" 'test'"
       let context' = defaultContext { currentUser = "user", currentDir = "dir", currentEnv = [("a", "1")] }
-      let mockFunc cmds = if "cd dir; export a=1; su user -c \"echo \\\"test\\\" 'test'\"" `elem` cmds
+      let mockFunc cmds = if "sudo su user -c 'cd dir; export a=1; echo \"test\" \\'test\\''" `elem` cmds
                           then Just $ return (0, ["successful"])
                           else Nothing
       let sshMock = SshMock [mockFunc] []
