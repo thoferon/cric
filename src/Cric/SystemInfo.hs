@@ -17,7 +17,7 @@ data OperatingSystem = Linux
                      | UnknownOS BL.ByteString
                      deriving (Show, Eq)
 
-getOS :: Cric OperatingSystem
+getOS :: Monad m => CricT m OperatingSystem
 getOS = do
   result <- run "uname -o"
   let name = firstLine result

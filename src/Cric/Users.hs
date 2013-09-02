@@ -32,7 +32,7 @@ duo = defaultUserOptions
 instance Default UserOptions where
   def = duo
 
-createUser :: String -> UserOptions -> Cric Result
+createUser :: Monad m => String -> UserOptions -> CricT m Result
 createUser u opts = do
     log LInfo $ "Creating user " ++ u ++ " ..."
     let cmdWithOptions = addLoginGroup (loginGroup opts)
@@ -52,7 +52,7 @@ createUser u opts = do
     addLoginGroup Nothing   = id
     addLoginGroup (Just lg) = (++ " -g " ++ lg)
 
-removeUser :: String -> Cric Result
+removeUser :: Monad m => String -> CricT m Result
 removeUser u = do
   log LInfo $ "Removing user " ++ u ++ " ..."
   test <- testCommand "rmuser"

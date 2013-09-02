@@ -8,20 +8,20 @@ import Cric
 
 import Numeric (showOct)
 
-createFile :: FilePath -> Cric Result
+createFile :: Monad m => FilePath -> CricT m Result
 createFile = exec . ("touch " ++)
 
-removeFile :: FilePath -> Cric Result
+removeFile :: Monad m => FilePath -> CricT m Result
 removeFile = exec . ("rm -rf " ++)
 
-copyFile :: FilePath -> FilePath -> Cric Result
+copyFile :: Monad m => FilePath -> FilePath -> CricT m Result
 copyFile from to = exec $ "cp -rf " ++ from ++ " " ++ to
 
-moveFile :: FilePath -> FilePath -> Cric Result
+moveFile :: Monad m => FilePath -> FilePath -> CricT m Result
 moveFile from to = exec $ "mv -rf " ++ from ++ " " ++ to
 
-chmod :: Int -> FilePath -> Cric Result
+chmod :: Monad m => Int -> FilePath -> CricT m Result
 chmod perm path = exec $ "chmod " ++ showOct perm " " ++ path
 
-chown :: String -> String -> FilePath -> Cric Result
+chown :: Monad m => String -> String -> FilePath -> CricT m Result
 chown username group path = exec $ "chown " ++ username ++ ":" ++ group ++ " " ++ path
