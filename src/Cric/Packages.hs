@@ -1,8 +1,10 @@
 module Cric.Packages (
-  PackageManager(..), PkgInstallError(..)
+  PackageManager(..), PkgManagerError(..)
   , getPackageManager
   , installPackage
   , installWithRPM, installWithYum, installWithAPT
+  , removePackage
+  , removeWithRPM, removeWithYum, removeWithAPT
   ) where
 
 import Prelude hiding (log)
@@ -15,12 +17,12 @@ data PackageManager = RPM | Yum | APT
                     | UnknownPackageManager
                     deriving (Show, Eq)
 
-data PkgInstallError = NoPackageManagerFound
-                     | UnknownPkgInstallError Int BL.ByteString
+data PkgManagerError = NoPackageManagerFound
+                     | UnknownPkgManagerError Int BL.ByteString
                      deriving (Show, Eq)
 
 getPackageManager :: Cric PackageManager
-getPackageManager = getPackageManager' [("rpm", RPM), ("yum", Yum), ("apt-get", APT)]
+getPackageManager = getPackageManager' [("yum", Yum), ("apt-get", APT), ("rpm", RPM)]
   where
     getPackageManager' :: [(String, PackageManager)] -> Cric PackageManager
     getPackageManager' [] = return UnknownPackageManager
@@ -30,32 +32,55 @@ getPackageManager = getPackageManager' [("rpm", RPM), ("yum", Yum), ("apt-get", 
         True -> return mgr
         False -> getPackageManager' rest
 
-installPackage :: String -> Cric (Either PkgInstallError BL.ByteString)
+installPackage :: String -> Cric (Either PkgManagerError BL.ByteString)
 installPackage pkgName = do
   log LInfo $ "Installing " ++ pkgName ++ " ..."
   pkgMgr <- getPackageManager
   result <- case pkgMgr of
-    RPM -> installWithRPM pkgName
     Yum -> installWithYum pkgName
     APT -> installWithAPT pkgName
+    RPM -> installWithRPM pkgName
     UnknownPackageManager -> return $ Left NoPackageManagerFound
   case result of
     Left err -> log LError $ "Error installing " ++ pkgName ++ " (" ++ show err ++ ")"
     Right _  -> log LInfo  $ "Package " ++ pkgName ++ " installed successfully."
   return result
 
-installWithRPM :: String -> Cric (Either PkgInstallError BL.ByteString)
-installWithRPM = installWithCommand . ("rpm -i "++)
+installWithRPM :: String -> Cric (Either PkgManagerError BL.ByteString)
+installWithRPM = execManager . ("rpm -i "++)
 
-installWithYum :: String -> Cric (Either PkgInstallError BL.ByteString)
-installWithYum = installWithCommand . ("yum install -y "++)
+installWithYum :: String -> Cric (Either PkgManagerError BL.ByteString)
+installWithYum = execManager . ("yum install -y "++)
 
-installWithAPT :: String -> Cric (Either PkgInstallError BL.ByteString)
-installWithAPT = installWithCommand . ("apt-get install -y "++)
+installWithAPT :: String -> Cric (Either PkgManagerError BL.ByteString)
+installWithAPT = execManager . ("apt-get install -y "++)
 
-installWithCommand :: String -> Cric (Either PkgInstallError BL.ByteString)
-installWithCommand cmd = do
+removePackage :: String -> Cric (Either PkgManagerError BL.ByteString)
+removePackage pkgName = do
+  log LInfo $ "Removing " ++ pkgName ++ " ..."
+  pkgMgr <- getPackageManager
+  result <- case pkgMgr of
+    Yum -> removeWithYum pkgName
+    APT -> removeWithAPT pkgName
+    RPM -> removeWithRPM pkgName
+    UnknownPackageManager -> return $ Left NoPackageManagerFound
+  case result of
+    Left err -> log LError $ "Error removing " ++ pkgName ++ " (" ++ show err ++ ")"
+    Right _  -> log LInfo  $ "Package " ++ pkgName ++ " removed successfully."
+  return result
+
+removeWithRPM :: String -> Cric (Either PkgManagerError BL.ByteString)
+removeWithRPM = execManager . ("rpm -e "++)
+
+removeWithYum :: String -> Cric (Either PkgManagerError BL.ByteString)
+removeWithYum = execManager . ("yum remove -y "++)
+
+removeWithAPT :: String -> Cric (Either PkgManagerError BL.ByteString)
+removeWithAPT = execManager . ("apt-get remove -y "++)
+
+execManager :: String -> Cric (Either PkgManagerError BL.ByteString)
+execManager cmd = do
   result <- exec cmd
   return $ case result of
-    Success output -> Right output
-    Error code output -> Left $ UnknownPkgInstallError code output
+    Success output    -> Right output
+    Error code output -> Left $ UnknownPkgManagerError code output
