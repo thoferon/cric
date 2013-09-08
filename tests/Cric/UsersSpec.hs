@@ -32,9 +32,9 @@ test = do
                             , "-G group1,group2"
                             , "-g logingroup"]
 
-      let mockFunc cmds = if any isCmdGood cmds
-                          then Just $ return (0, ["good"])
-                          else Nothing
+      let mockFunc cmd = if isCmdGood cmd
+            then Just $ return (0, "good")
+            else Nothing
       let sshMock = SshMock [mockFunc] []
 
       result <- testCricWith sshMock cric
@@ -50,11 +50,11 @@ test = do
       let cric = createUser "testusername" opts
 
       let isCmdGood cmd = not $ any (`isInfixOf` cmd) [ "-s" , "-u" , "-G" , "-g"]
-      let mockFunc cmds = if any ("adduser" `isInfixOf`) cmds
-                          then if all isCmdGood cmds
-                               then Just $ return (0, ["good"])
-                               else Just $ return (1, ["bad"])
-                          else Nothing
+      let mockFunc cmd = if "adduser" `isInfixOf` cmd
+            then if isCmdGood cmd
+                 then Just $ return (0, "good")
+                 else Just $ return (1, "bad")
+            else Nothing
       let sshMock = SshMock [mockFunc] []
 
       result <- testCricWith sshMock cric
@@ -62,13 +62,13 @@ test = do
 
   describe "removeUser" $ do
     it "detects and uses rmuser" $ do
-      let mock = mockCommand "rmuser" (0, ["rmuser called"])
-               . mockCommand "which rmuser" (0, ["/bin/rmuser"])
+      let mock = mockCommand "rmuser" (0, "rmuser called")
+               . mockCommand "which rmuser" (0, "/bin/rmuser")
                $ defaultSshMock
       result <- testCricWith mock $ removeUser "username"
       result `shouldBe` Success "rmuser called"
 
     it "uses deluser if rmuser is not found" $ do
-      let mock = mockCommand "deluser" (0, ["deluser called"]) defaultSshMock
+      let mock = mockCommand "deluser" (0, "deluser called") defaultSshMock
       result <- testCricWith mock $ removeUser "username"
       result `shouldBe` Success "deluser called"

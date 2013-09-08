@@ -7,14 +7,11 @@ module Cric.SystemInfo (
 
 import Cric
 
-import Data.Word8 (Word8)
-import Data.ByteString.Lazy.Char8 () -- For OverloadedStrings
-
-import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Char8 as BS
 
 data OperatingSystem = Linux
                      | FreeBSD
-                     | UnknownOS BL.ByteString
+                     | UnknownOS BS.ByteString
                      deriving (Show, Eq)
 
 getOS :: Monad m => CricT m OperatingSystem
@@ -26,7 +23,5 @@ getOS = do
     "FreeBSD" -> FreeBSD
     other -> UnknownOS other
 
-firstLine :: BL.ByteString -> BL.ByteString
-firstLine = BL.takeWhile isNotNewLine
-  where isNotNewLine :: Word8 -> Bool
-        isNotNewLine = (/=10)
+firstLine :: BS.ByteString -> BS.ByteString
+firstLine = BS.takeWhile (/='\n')

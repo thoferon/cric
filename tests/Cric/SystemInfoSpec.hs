@@ -18,8 +18,8 @@ testGetOS resp exp = do
 test :: Spec
 test = do
   describe "getOS" $ do
-    it "detects Linux"   $ testGetOS (0, ["GNU/Linux"]) Linux
-    it "detects FreeBSD" $ testGetOS (0, ["FreeBSD"])   FreeBSD
+    it "detects Linux"   $ testGetOS (0, "GNU/Linux") Linux
+    it "detects FreeBSD" $ testGetOS (0, "FreeBSD")   FreeBSD
 
     it "returns Unknown with the value if not found" $ do
-      testGetOS (0, ["unrecognized"]) $ UnknownOS "unrecognized"
+      testGetOS (0, "unrecognized") $ UnknownOS "unrecognized"

@@ -32,27 +32,26 @@ import Prelude hiding (log)
 
 import Cric.TypeDefs
 
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Encoding as TLE
+import qualified Data.ByteString.Char8 as BS
 
 import Data.Default
 import Data.List (isPrefixOf, partition)
 import Data.String.Utils (replace)
 import Control.Monad (liftM)
 import Control.Monad.Trans
-import Network.SSH.Client.LibSSH2
 import Data.ByteString.Lazy.Char8 () -- For OverloadedStrings
 
-data Result = Success BL.ByteString
-            | Error Int BL.ByteString
+import qualified Network.SSH.Client.SimpleSSH as SSH
+
+data Result = Success BS.ByteString
+            | Error Int BS.ByteString
             deriving (Show, Eq)
 
 isSuccess :: Result -> Bool
 isSuccess (Success _) = True
 isSuccess _ = False
 
-outputFromResult :: Result -> BL.ByteString
+outputFromResult :: Result -> BS.ByteString
 outputFromResult (Success output) = output
 outputFromResult (Error _ output) = output
 
@@ -93,25 +92,31 @@ runCric = runCricT
 install :: MonadIO m => CricT m a -> Logger m -> Context -> Server -> m a
 install cric logger context server = runCricT cric logger context server executor
   where
-    executor :: MonadIO m => Executor Session m
-    executor f = liftIO $ case authType server of
-                   KeysAuthentication ->
-                     withSSH2 (knownHostsPath server)
-                              (publicKeyPath server)
-                              (privateKeyPath server)
-                              (passphrase server)
-                              (user server)
-                              (hostname server)
-                              (port server)
-                              f
-                   PasswordAuthentication ->
-                     fail "PasswordAuthentication has been disabled (see README.md for more information)"
---                   withSSH2User (knownHostsPath server)
---                                (user server)
---                                (password server)
---                                (hostname server)
---                                (port server)
---                                (runCric cric logger context server)
+    executor :: MonadIO m => Executor SSH.Session m
+    executor f = liftIO $ do
+      let action = case authType server of
+            KeysAuthentication ->
+              SSH.withSessionKey
+                (hostname server)
+                (toInteger $ port server)
+                (knownHostsPath server)
+                (user server)
+                (publicKeyPath server)
+                (privateKeyPath server)
+                (passphrase server)
+                (liftIO . f)
+            PasswordAuthentication ->
+              SSH.withSessionPassword
+                (hostname server)
+                (toInteger $ port server)
+                (knownHostsPath server)
+                (user server)
+                (password server)
+                (liftIO . f)
+      eRes <- SSH.runSimpleSSH action
+      case eRes of
+        Left err  -> fail $ show err -- Can be caught by the user if your monad is a MonadError
+        Right res -> return res
 
 installOn :: MonadIO m => CricT m a -> Server -> m a
 installOn cric server = install cric stdoutLogger defaultContext server
@@ -123,16 +128,15 @@ exec cmd = do
     log LDebug $ "Executing " ++ cmd' ++ " ..."
     res <- exec' cmd'
     let output = case res of
-                   Success resp    | resp == BL.empty -> "No output."
-                                   | otherwise        -> resp
-                   Error _ resp    | resp == BL.empty -> "No output."
-                                   | otherwise        -> resp
-    log LDebug $ "Executed: " ++ cmd' ++ "\nOutput: " ++ (TL.unpack . TL.stripEnd . TLE.decodeUtf8 $ output)
+                   Success resp | resp == BS.empty -> "No output."
+                                | otherwise        -> resp
+                   Error _ resp | resp == BS.empty -> "No output."
+                                | otherwise        -> resp
+    log LDebug $ "Executed: " ++ cmd' ++ "\nOutput: " ++ (BS.unpack output)
     return res
   where
     exec' cmdWithContext = CricT $ \_ _ _ executor -> do
-      (code, outputs) <- executor $ \session -> sshExecCommands session [cmdWithContext]
-      let output = BL.concat outputs
+      (code, output) <- executor $ \session -> sshExecCommand session cmdWithContext
       return $ if code == 0 then
         Success output
         else
@@ -147,7 +151,7 @@ exec cmd = do
       "" -> c
       u  -> "sudo su " ++ u ++ " -c \'" ++ replace "\'" "\\\'" c ++ "\'"
 
-run :: Monad m => String -> CricT m BL.ByteString
+run :: Monad m => String -> CricT m BS.ByteString
 run cmd = outputFromResult `liftM` exec cmd
 
 defaultFileTransferOptions :: FileTransferOptions
@@ -183,7 +187,7 @@ sendFile from to options = do
     testHash hash ((cmdName, toCmd):rest) elseCric = do
       testCmd <- testCommand cmdName
       if testCmd then
-          run (toCmd to) >>= return . Right . (hash `isPrefixOf`) . TL.unpack . TL.stripEnd . TLE.decodeUtf8
+          run (toCmd to) >>= return . Right . (hash `isPrefixOf`) . BS.unpack
         else
           testHash hash rest elseCric
 

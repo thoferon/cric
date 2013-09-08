@@ -17,20 +17,25 @@ module Cric.TypeDefs (
 
 import Control.Monad.Trans
 
+import qualified Data.ByteString.Char8 as BS
+
 import System.Directory
 import System.FilePath
 
-import Network.SSH.Client.LibSSH2 (Session, execCommands, scpSendFile)
-import qualified Data.ByteString.Lazy as BL
+import qualified Network.SSH.Client.SimpleSSH as SSH
 
 -- For tests, see tests/SpecHelpers.hs
 class SshSession s where
-  sshExecCommands :: s -> [String] -> IO (Int, [BL.ByteString])
-  sshSendFile :: s -> Int -> FilePath -> FilePath -> IO Integer
+  sshExecCommand :: s -> String -> IO (Int, BS.ByteString)
+  sshSendFile    :: s -> Int -> FilePath -> FilePath -> IO Integer
 
-instance SshSession Session where
-  sshExecCommands session cmds = execCommands session cmds
-  sshSendFile session size src dest = scpSendFile session size src dest
+instance SshSession SSH.Session where
+  sshExecCommand session cmd = do
+    eRes <- SSH.runSimpleSSH $ SSH.execCommand session cmd
+    case eRes of
+      Left err  -> error $ "FIXME: Cric should bubble the errors up, received: " ++ show err
+      Right res -> return (fromInteger $ SSH.exitCode res, SSH.content res)
+  sshSendFile = undefined
 
 data LogLevel = LDebug | LInfo | LNotice | LWarning | LError | LPanic
               deriving (Show, Eq)

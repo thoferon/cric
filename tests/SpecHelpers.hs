@@ -10,25 +10,23 @@ import Cric.TypeDefs
 
 import Test.Hspec
 
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Encoding as TLE
-import Data.Maybe
 import Data.List
-import Data.ByteString.Lazy.Char8 ()
+import Data.Maybe
+import Data.Monoid
+import qualified Data.ByteString.Char8 as BS
 
-import System.IO
 import System.Directory
+import System.IO
 import System.IO.Temp
 
 import Control.Monad
 import Control.Monad.Trans
 
-type ExecCommandsMock = [String] -> Maybe (IO (Int, [BL.ByteString]))
-type SendFileMock     = Int -> FilePath -> FilePath -> Maybe (IO Integer)
+type ExecCommandMock = String -> Maybe (IO (Int, BS.ByteString))
+type SendFileMock    = Int -> FilePath -> FilePath -> Maybe (IO Integer)
 
-data SshMock = SshMock { execCommandsMocks :: [ExecCommandsMock]
-                       , sendFileMocks     :: [SendFileMock] }
+data SshMock = SshMock { execCommandMocks :: [ExecCommandMock]
+                       , sendFileMocks    :: [SendFileMock] }
 
 instance Read LogLevel where
   readsPrec _ str
@@ -41,20 +39,19 @@ instance Read LogLevel where
     | otherwise = []
 
 instance SshSession SshMock where
-  sshExecCommands (execCommandsMocks -> fs) cmds =
-      foldl' (\acc f -> fromMaybe acc $ f cmds) (dfl cmds) fs
-    where dfl cmds = return (42, "no mock found: " : packedCmds cmds)
-          packedCmds = map (TLE.encodeUtf8 . TL.pack)
+  sshExecCommand (execCommandMocks -> fs) cmd =
+      foldl' (\acc f -> fromMaybe acc $ f cmd) (dfl cmd) fs
+    where dfl cmd = return (42, "no mock found: " <> BS.pack cmd)
   sshSendFile (sendFileMocks -> fs) perm from to =
     foldl' (\acc f -> fromMaybe acc $ f perm from to) (return 0) fs
 
 defaultSshMock :: SshMock
 defaultSshMock = SshMock [] []
 
-mockCommand :: String -> (Int, [BL.ByteString]) -> SshMock -> SshMock
+mockCommand :: String -> (Int, BS.ByteString) -> SshMock -> SshMock
 mockCommand cmd result sshMock =
-  let mock cmds = if any (cmd `isInfixOf`) cmds then Just $ return result else Nothing
-  in sshMock { execCommandsMocks = mock : execCommandsMocks sshMock  }
+  let mock receivedCmd = if cmd `isInfixOf` receivedCmd then Just $ return result else Nothing
+  in sshMock { execCommandMocks = mock : execCommandMocks sshMock  }
 
 testInstall :: Cric a -> Logger IO -> Context -> Server -> IO a
 testInstall = testInstallWith defaultSshMock

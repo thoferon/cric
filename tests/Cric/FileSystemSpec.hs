@@ -9,8 +9,7 @@ import Cric
 import Cric.FileSystem
 
 import Data.List
-import qualified Data.Text.Lazy.Encoding as TLE
-import qualified Data.Text.Lazy as TL
+import qualified Data.ByteString.Char8 as BS
 
 test :: Spec
 test = do
@@ -45,4 +44,4 @@ test = do
       result `shouldSatisfy` (`outputContains` "chown user:group filepath")
 
 outputContains :: Result -> String -> Bool
-outputContains res str = isInfixOf str . TL.unpack . TLE.decodeUtf8 $ outputFromResult res
+outputContains res str = isInfixOf str . BS.unpack $ outputFromResult res
