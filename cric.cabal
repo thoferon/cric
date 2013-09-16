@@ -18,7 +18,7 @@ package-url:         http://hub.darcs.net/thoferon/cric
 
 library
   exposed-modules:     Cric, Cric.Core, Cric.TypeDefs,
-                       Cric.SystemInfo, Cric.Packages, Cric.Users
+                       Cric.SystemInfo, Cric.Packages, Cric.Users, Cric.FileSystem
                        Cric.Platform
   ghc-options:         -Wall
   hs-source-dirs:      src

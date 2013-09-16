@@ -35,7 +35,11 @@ instance SshSession SSH.Session where
     case eRes of
       Left err  -> error $ "FIXME: Cric should bubble the errors up, received: " ++ show err
       Right res -> return (fromInteger $ SSH.exitCode res, SSH.content res)
-  sshSendFile = undefined
+  sshSendFile session mode source target = do
+    eRes <- SSH.runSimpleSSH $ SSH.sendFile session (toInteger mode) source target
+    case eRes of
+      Left err  -> error $ "FIXME: Cric should bubble the errors up, received: " ++ show err
+      Right res -> return res
 
 data LogLevel = LDebug | LInfo | LNotice | LWarning | LError | LPanic
               deriving (Show, Eq)
