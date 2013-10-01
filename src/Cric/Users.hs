@@ -1,30 +1,29 @@
-module Cric.Users (
-  UserOptions(..)
+module Cric.Users
+  ( UserOptions(..)
   , defaultUserOptions, duo
   , createUser, removeUser
   ) where
 
-import Prelude hiding (log)
-
-import Data.List (foldl')
 import Data.Default
+import Data.List (foldl')
 
 import Cric
+import Cric.SystemInfo
 
-data UserOptions = UserOptions {
-  loginGroup :: Maybe String
-  , groups   :: [String]
-  , uid      :: Maybe Int
-  , shell    :: Maybe String
-} deriving Show
+data UserOptions = UserOptions
+  { loginGroup :: Maybe String
+  , groups     :: [String]
+  , uid        :: Maybe Int
+  , shell      :: Maybe String
+  } deriving Show
 
 defaultUserOptions :: UserOptions
-defaultUserOptions = UserOptions {
-  loginGroup = Nothing
-  , groups   = []
-  , uid      = Nothing
-  , shell    = Nothing
-}
+defaultUserOptions = UserOptions
+  { loginGroup = Nothing
+  , groups     = []
+  , uid        = Nothing
+  , shell      = Nothing
+  }
 
 duo :: UserOptions
 duo = defaultUserOptions
@@ -32,9 +31,9 @@ duo = defaultUserOptions
 instance Default UserOptions where
   def = duo
 
-createUser :: Monad m => String -> UserOptions -> CricT m Result
+createUser :: MonadCric m => String -> UserOptions -> m Result
 createUser u opts = do
-    log LInfo $ "Creating user " ++ u ++ " ..."
+    logMsg LInfo $ "Creating user " ++ u ++ " ..."
     let cmdWithOptions = addLoginGroup (loginGroup opts)
                        . addGroups (groups opts)
                        . addUID (uid opts)
@@ -52,9 +51,9 @@ createUser u opts = do
     addLoginGroup Nothing   = id
     addLoginGroup (Just lg) = (++ " -g " ++ lg)
 
-removeUser :: Monad m => String -> CricT m Result
+removeUser :: MonadCric m => String -> m Result
 removeUser u = do
-  log LInfo $ "Removing user " ++ u ++ " ..."
+  logMsg LInfo $ "Removing user " ++ u ++ " ..."
   test <- testCommand "rmuser"
   let cmd = if test then "rmuser " else "deluser "
   exec $ cmd ++ u

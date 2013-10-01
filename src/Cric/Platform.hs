@@ -1,5 +1,5 @@
-module Cric.Platform (
-  module Cric
+module Cric.Platform
+  ( module Cric
   , module Cric.SystemInfo
   , module Cric.Packages
   , module Cric.FileSystem

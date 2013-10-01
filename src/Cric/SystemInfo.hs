@@ -1,20 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Cric.SystemInfo (
-  OperatingSystem(..)
+module Cric.SystemInfo
+  ( OperatingSystem(..)
   , getOS
+  , testCommand
   ) where
 
-import Cric
-
 import qualified Data.ByteString.Char8 as BS
+
+import           Cric
 
 data OperatingSystem = Linux
                      | FreeBSD
                      | UnknownOS BS.ByteString
                      deriving (Show, Eq)
 
-getOS :: Monad m => CricT m OperatingSystem
+getOS :: MonadCric m => m OperatingSystem
 getOS = do
   result <- run "uname -o"
   let name = firstLine result
@@ -25,3 +26,10 @@ getOS = do
 
 firstLine :: BS.ByteString -> BS.ByteString
 firstLine = BS.takeWhile (/='\n')
+
+testCommand :: MonadCric m => String -> m Bool
+testCommand cmd = do
+  res <- exec $ "which " ++ cmd
+  return $ case res of
+    Success _ -> True
+    Error _ _ -> False

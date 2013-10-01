@@ -1,5 +1,5 @@
-module Cric.Packages (
-  PackageManager(..), PkgManagerError(..)
+module Cric.Packages
+  ( PackageManager(..), PkgManagerError(..)
   , getPackageManager
   , installPackage
   , installWithRPM, installWithYum, installWithAPT
@@ -7,11 +7,10 @@ module Cric.Packages (
   , removeWithRPM, removeWithYum, removeWithAPT
   ) where
 
-import Prelude hiding (log)
-
-import Cric
-
 import qualified Data.ByteString.Char8 as BS
+
+import           Cric
+import           Cric.SystemInfo
 
 data PackageManager = RPM | Yum | APT
                     | UnknownPackageManager
@@ -21,10 +20,10 @@ data PkgManagerError = NoPackageManagerFound
                      | UnknownPkgManagerError Int BS.ByteString
                      deriving (Show, Eq)
 
-getPackageManager :: Monad m => CricT m PackageManager
+getPackageManager :: MonadCric m => m PackageManager
 getPackageManager = getPackageManager' [("yum", Yum), ("apt-get", APT), ("rpm", RPM)]
   where
-    getPackageManager' :: Monad m => [(String, PackageManager)] -> CricT m PackageManager
+    getPackageManager' :: MonadCric m => [(String, PackageManager)] -> m PackageManager
     getPackageManager' [] = return UnknownPackageManager
     getPackageManager' ((cmd,mgr):rest) = do
       test <- testCommand cmd
@@ -32,9 +31,9 @@ getPackageManager = getPackageManager' [("yum", Yum), ("apt-get", APT), ("rpm", 
         True -> return mgr
         False -> getPackageManager' rest
 
-installPackage :: Monad m => String -> CricT m (Either PkgManagerError BS.ByteString)
+installPackage :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 installPackage pkgName = do
-  log LInfo $ "Installing " ++ pkgName ++ " ..."
+  logMsg LInfo $ "Installing " ++ pkgName ++ " ..."
   pkgMgr <- getPackageManager
   result <- case pkgMgr of
     Yum -> installWithYum pkgName
@@ -42,22 +41,22 @@ installPackage pkgName = do
     RPM -> installWithRPM pkgName
     UnknownPackageManager -> return $ Left NoPackageManagerFound
   case result of
-    Left err -> log LError $ "Error installing " ++ pkgName ++ " (" ++ show err ++ ")"
-    Right _  -> log LInfo  $ "Package " ++ pkgName ++ " installed successfully."
+    Left err -> logMsg LError $ "Error installing " ++ pkgName ++ " (" ++ show err ++ ")"
+    Right _  -> logMsg LInfo  $ "Package " ++ pkgName ++ " installed successfully."
   return result
 
-installWithRPM :: Monad m => String -> CricT m (Either PkgManagerError BS.ByteString)
+installWithRPM :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 installWithRPM = execManager . ("rpm -i "++)
 
-installWithYum :: Monad m => String -> CricT m (Either PkgManagerError BS.ByteString)
+installWithYum :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 installWithYum = execManager . ("yum install -y "++)
 
-installWithAPT :: Monad m => String -> CricT m (Either PkgManagerError BS.ByteString)
+installWithAPT :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 installWithAPT = execManager . ("apt-get install -y "++)
 
-removePackage :: Monad m => String -> CricT m (Either PkgManagerError BS.ByteString)
+removePackage :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 removePackage pkgName = do
-  log LInfo $ "Removing " ++ pkgName ++ " ..."
+  logMsg LInfo $ "Removing " ++ pkgName ++ " ..."
   pkgMgr <- getPackageManager
   result <- case pkgMgr of
     Yum -> removeWithYum pkgName
@@ -65,20 +64,20 @@ removePackage pkgName = do
     RPM -> removeWithRPM pkgName
     UnknownPackageManager -> return $ Left NoPackageManagerFound
   case result of
-    Left err -> log LError $ "Error removing " ++ pkgName ++ " (" ++ show err ++ ")"
-    Right _  -> log LInfo  $ "Package " ++ pkgName ++ " removed successfully."
+    Left err -> logMsg LError $ "Error removing " ++ pkgName ++ " (" ++ show err ++ ")"
+    Right _  -> logMsg LInfo  $ "Package " ++ pkgName ++ " removed successfully."
   return result
 
-removeWithRPM :: Monad m => String -> CricT m (Either PkgManagerError BS.ByteString)
+removeWithRPM :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 removeWithRPM = execManager . ("rpm -e "++)
 
-removeWithYum :: Monad m => String -> CricT m (Either PkgManagerError BS.ByteString)
+removeWithYum :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 removeWithYum = execManager . ("yum remove -y "++)
 
-removeWithAPT :: Monad m => String -> CricT m (Either PkgManagerError BS.ByteString)
+removeWithAPT :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 removeWithAPT = execManager . ("apt-get remove -y "++)
 
-execManager :: Monad m => String -> CricT m (Either PkgManagerError BS.ByteString)
+execManager :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 execManager cmd = do
   result <- exec cmd
   return $ case result of

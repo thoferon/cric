@@ -1,15 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Cric.CoreSpec (
-  test
+module Cric.CoreSpec
+  ( test
   ) where
 
-import Cric
-import SpecHelpers
-import Test.Hspec
-import Control.Monad.Trans
-import Data.List
+import           Control.Monad.Trans
+
+import           Data.List
 import qualified Data.ByteString.Char8 as BS
+
+import           SpecHelpers
+import           Test.Hspec
+
+import           Cric
 
 test :: Spec
 test = do
@@ -107,9 +110,9 @@ test = do
       result <- liftIO $ testInstall cric logger context server
       result `shouldBe` context
 
-  describe "log" $ do
+  describe "logMsg" $ do
     it "uses the logger passed" $ do
-      let cric = Cric.log LWarning "blah"
+      let cric = logMsg LWarning "blah"
       logs <- liftIO $ do
         (getLogs, logger') <- testLogger
         let logger'' lvl msg = logger' lvl ("I am the one saying " ++ msg)
@@ -117,21 +120,6 @@ test = do
         getLogs
       logs `shouldSatisfy` any (== (LWarning, "I am the one saying blah"))
 
-  describe "testCommand" $ do
-    let cric = testCommand "cmd"
-    let testMock resp cmd = if "which cmd" `isInfixOf` cmd
-          then Just $ return resp
-          else Nothing
-
-    it "returns True if the command exists" $ do
-      let sshMock = SshMock [testMock (0, "/bin/cmd")] []
-      result <- liftIO $ testInstallWith sshMock cric logger context server
-      result `shouldBe` True
-
-    it "returns False if the command doesn't exist" $ do
-      let sshMock = SshMock [testMock (1, "")] []
-      result <- liftIO $ testInstallWith sshMock cric logger context server
-      result `shouldBe` False
 
   describe "asUser" $ do
     it "sets the user in the context" $ do

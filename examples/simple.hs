@@ -1,3 +1,5 @@
+import Control.Monad.IO.Class
+
 import Cric.Platform
 import System.IO
 import Control.Monad.Trans

@@ -1,6 +1,5 @@
-module Cric (
-  -- Types
-  Server(..), AuthenticationType(..)
+module Cric
+  ( Server(..), AuthenticationType(..)
   , Context(..)
   , Cric
   , CricT(..)
@@ -8,6 +7,7 @@ module Cric (
   , Logger, LogLevel(..)
   , FileTransferOptions(..)
   , Executor
+  , MonadCric(..)
   -- Factories
   , defaultServer, autoServer
   , defaultContext
@@ -16,14 +16,9 @@ module Cric (
   -- Functions
   , runCric
   , install, installOn
-  , exec, run
+  , run
   , isSuccess, outputFromResult
-  , sendFile
-  , getServer
-  , getContext
-  , log
-  , testCommand
-  , withChangedContext
+--  , testCommand
   , asUser
   , inDir
   , withEnv
