@@ -10,10 +10,11 @@ import qualified Data.ByteString.Char8 as BS
 
 import           Cric
 
-data OperatingSystem = Linux
-                     | FreeBSD
-                     | UnknownOS BS.ByteString
-                     deriving (Show, Eq)
+data OperatingSystem
+  = Linux
+  | FreeBSD
+  | UnknownOS BS.ByteString
+  deriving (Show, Eq)
 
 getOS :: MonadCric m => m OperatingSystem
 getOS = do
@@ -31,5 +32,5 @@ testCommand :: MonadCric m => String -> m Bool
 testCommand cmd = do
   res <- exec $ "which " ++ cmd
   return $ case res of
-    Success _ -> True
-    Error _ _ -> False
+    Success _   -> True
+    Failure _ _ -> False

@@ -8,7 +8,6 @@ module Cric.Core
   , Result(..)
   , FileTransferOptions(..)
   , Executor
-  , MonadCric(..)
   , runCric
   , install
   , installOn
@@ -26,33 +25,14 @@ import           Control.Monad                (liftM)
 import           Control.Monad.Trans
 
 import           Data.ByteString.Lazy.Char8   ()
-import           Data.Default
 import           Data.List                    (isPrefixOf, partition)
 import           Data.String.Utils            (replace)
 import qualified Data.ByteString.Char8        as BS
 
 import qualified Network.SSH.Client.SimpleSSH as SSH
 
+import           Cric.MonadCric
 import           Cric.TypeDefs
-
-data Result = Success BS.ByteString
-            | Error Int BS.ByteString
-            deriving (Show, Eq)
-
-isSuccess :: Result -> Bool
-isSuccess (Success _) = True
-isSuccess _           = False
-
-outputFromResult :: Result -> BS.ByteString
-outputFromResult (Success output) = output
-outputFromResult (Error _ output) = output
-
-data FileTransferOptions = FileTransferOptions
-  { permissions :: Int
-  , md5Hash     :: Maybe String
-  } deriving Show
-
-type Executor s m = forall a. (s -> IO a) -> m a
 
 newtype CricT m a = CricT
   { runCricT :: forall s. SshSession s
@@ -78,21 +58,13 @@ instance MonadIO m => MonadIO (CricT m) where
 
 type Cric a = CricT IO a
 
-class Monad m => MonadCric m where
-  exec               :: String -> m Result
-  sendFile           :: FilePath -> FilePath -> FileTransferOptions -> m (Either Integer Bool)
-  withChangedContext :: (Context -> Context) -> m a -> m a
-  logMsg             :: LogLevel -> String -> m ()
-  getContext         :: m Context
-  getServer          :: m Server
-
 instance Monad m => MonadCric (CricT m) where
-  exec = execCricT
-  sendFile = sendFileCricT
+  exec               = execCricT
+  sendFile           = sendFileCricT
   withChangedContext = withChangedContextCricT
-  logMsg = logMsgCricT
-  getContext = getContextCricT
-  getServer = getServerCricT
+  logMsg             = logMsgCricT
+  getContext         = getContextCricT
+  getServer          = getServerCricT
 
 runCric :: Cric a -> (forall s. SshSession s => Logger IO -> Context -> Server -> Executor s IO -> IO a)
 runCric = runCricT
@@ -123,7 +95,7 @@ install cric logger context server = runCricT cric logger context server executo
                 (liftIO . f)
       eRes <- SSH.runSimpleSSH action
       case eRes of
-        Left err  -> fail $ show err -- Can be caught by the user if your monad is a MonadError
+        Left err  -> fail $ show err --TODO: change this
         Right res -> return res
 
 installOn :: MonadIO m => CricT m a -> Server -> m a
@@ -133,22 +105,21 @@ execCricT :: Monad m => String -> CricT m Result
 execCricT cmd = do
     context <- getContextCricT
     let cmd' = addUser context . addDir context . addEnv (currentEnv context) $ cmd
-    logMsg LDebug $ "Executing " ++ cmd' ++ " ..."
+    logMsg Debug $ "Executing " ++ cmd' ++ " ..."
     res <- exec' cmd'
     let output = case res of
-                   Success resp | resp == BS.empty -> "No output."
-                                | otherwise        -> resp
-                   Error _ resp | resp == BS.empty -> "No output."
-                                | otherwise        -> resp
-    logMsg LDebug $ "Executed: " ++ cmd' ++ "\nOutput: " ++ (BS.unpack output)
+                   Success resp   | resp == BS.empty -> "No output."
+                                  | otherwise        -> resp
+                   Failure _ resp | resp == BS.empty -> "No output."
+                                  | otherwise        -> resp
+    logMsg Debug $ "Executed: " ++ cmd' ++ "\nOutput: " ++ (BS.unpack output)
     return res
   where
     exec' cmdWithContext = CricT $ \_ _ _ executor -> do
       (code, output) <- executor $ \session -> sshExecCommand session cmdWithContext
-      return $ if code == 0 then
-        Success output
-        else
-        Error code output
+      return $ if code == 0
+               then Success output
+               else Failure code output
 
     addEnv [] c = c
     addEnv ((name,value):rest) c = addEnv rest $ "export " ++ name ++ "=" ++ value ++ "; " ++ c
@@ -162,27 +133,15 @@ execCricT cmd = do
 run :: MonadCric m => String -> m BS.ByteString
 run cmd = outputFromResult `liftM` exec cmd
 
-defaultFileTransferOptions :: FileTransferOptions
-defaultFileTransferOptions = FileTransferOptions {
-  permissions = 0o644
-  , md5Hash = Nothing
-}
-
-dfto :: FileTransferOptions
-dfto = defaultFileTransferOptions
-
-instance Default FileTransferOptions where
-  def = dfto
-
 -- returns either the number of bytes tranferred
 -- or True/False whether the transfer has been successful
 -- if the md5 command is available
 sendFileCricT :: Monad m => FilePath -> FilePath -> FileTransferOptions -> CricT m (Either Integer Bool)
 sendFileCricT from to options = do
-    logMsgCricT LInfo $ "Transferring file from `" ++ from ++ "` to `" ++ to ++ "` ..."
+    logMsgCricT Info $ "Transferring file from `" ++ from ++ "` to `" ++ to ++ "` ..."
     bytes <- CricT $ \_ _ _ executor -> do
       executor $ \session -> sshSendFile session (permissions options) from to
-    logMsgCricT LInfo $ show bytes ++ " bytes transferred."
+    logMsgCricT Info $ show bytes ++ " bytes transferred."
 
     let lbytes = return $ Left bytes
     case md5Hash options of
@@ -198,8 +157,8 @@ sendFileCricT from to options = do
         then do
           res <- execCricT (toCmd to)
           return . Right . (hash `isPrefixOf`) . BS.unpack $ case res of
-            Success bs -> bs
-            Error _ bs -> bs
+            Success bs   -> bs
+            Failure _ bs -> bs
         else
           testHash hash rest elseCric
 
@@ -207,8 +166,8 @@ sendFileCricT from to options = do
     testCommand cmd = do
       res <- execCricT $ "which " ++ cmd
       return $ case res of
-        Success _ -> True
-        Error _ _ -> False
+        Success _   -> True
+        Failure _ _ -> False
 
 getServerCricT :: Monad m => CricT m Server
 getServerCricT = CricT $ \_ _ server _ -> return server
@@ -228,8 +187,8 @@ asUser :: MonadCric m => String -> m a -> m a
 asUser u cric = do
     testResult <- asUser' $ exec "echo test if we can log in"
     case testResult of
-      Success _ -> return ()
-      Error _ _ -> logMsg LWarning $ "Can't execute a command as user " ++ u
+      Success _   -> return ()
+      Failure _ _ -> logMsg Warning $ "Can't execute a command as user " ++ u
     asUser' cric
   where
     asUser' = withChangedContext $ \context -> context { currentUser = u }
@@ -238,13 +197,13 @@ inDir :: MonadCric m => FilePath -> m a -> m a
 inDir d cric = do
     testResult <- inDir' $ exec "ls"
     case testResult of
-      Success _ -> return ()
-      Error _ _ -> logMsg LWarning $ "Can't change directory to " ++ d
+      Success _   -> return ()
+      Failure _ _ -> logMsg Warning $ "Can't change directory to " ++ d
     inDir' cric
   where
     inDir' = withChangedContext $ \context -> context { currentDir = d }
 
-withEnv :: MonadCric m => [(String,String)] -> m a -> m a
+withEnv :: MonadCric m => [(String, String)] -> m a -> m a
 withEnv e = withChangedContext $ \context -> context { currentEnv = mergeEnv (currentEnv context) e }
   where
     mergeEnv old [] = old

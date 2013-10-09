@@ -1,28 +1,69 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RankNTypes #-}
 
-module Cric.TypeDefs (
-  Server(..)
+module Cric.TypeDefs
+  ( Server(..)
+  , Result(..)
+  , FileTransferOptions(..)
   , AuthenticationType(..)
+  , Executor
   , Logger
   , LogLevel(..)
   , Context(..)
   , SshSession(..)
+  , isSuccess
+  , outputFromResult
   , defaultServer
   , defaultContext
+  , defaultFileTransferOptions
+  , dfto
   , stdoutLogger
   , debugLogger
   , autoServer
   ) where
 
-import Control.Monad.Trans
+import           Control.Monad.Trans
 
-import qualified Data.ByteString.Char8 as BS
+import           Data.Default
+import qualified Data.ByteString.Char8        as BS
 
-import System.Directory
-import System.FilePath
+import           System.Directory
+import           System.FilePath
 
 import qualified Network.SSH.Client.SimpleSSH as SSH
+
+data Result = Success BS.ByteString
+            | Failure Int BS.ByteString
+            deriving (Show, Eq)
+
+isSuccess :: Result -> Bool
+isSuccess (Success _) = True
+isSuccess _           = False
+
+outputFromResult :: Result -> BS.ByteString
+outputFromResult res = case res of
+  Success output   -> output
+  Failure _ output -> output
+
+data FileTransferOptions = FileTransferOptions
+  { permissions :: Int
+  , md5Hash     :: Maybe String
+  } deriving Show
+
+defaultFileTransferOptions :: FileTransferOptions
+defaultFileTransferOptions = FileTransferOptions {
+  permissions = 0o644
+  , md5Hash = Nothing
+}
+
+dfto :: FileTransferOptions
+dfto = defaultFileTransferOptions
+
+instance Default FileTransferOptions where
+  def = dfto
+
+type Executor s m = forall a. (s -> IO a) -> m a
 
 -- For tests, see tests/SpecHelpers.hs
 class SshSession s where
@@ -41,26 +82,21 @@ instance SshSession SSH.Session where
       Left err  -> error $ "FIXME: Cric should bubble the errors up, received: " ++ show err
       Right res -> return res
 
-data LogLevel = LDebug | LInfo | LNotice | LWarning | LError | LPanic
-              deriving (Show, Eq)
+data LogLevel = Debug | Info | Notice | Warning | Error | Panic deriving (Show, Eq)
 
 type Logger m = LogLevel -> String -> m ()
 
 stdoutLogger :: MonadIO m => Logger m
-stdoutLogger LDebug   _   = liftIO $ return ()
-stdoutLogger LInfo    msg = liftIO . putStrLn $ "[Info] "    ++ msg
-stdoutLogger LNotice  msg = liftIO . putStrLn $ "[Notice] "  ++ msg
-stdoutLogger LWarning msg = liftIO . putStrLn $ "[Warning] " ++ msg
-stdoutLogger LError   msg = liftIO . putStrLn $ "[Error] "   ++ msg
-stdoutLogger LPanic   msg = liftIO . putStrLn $ "[Panic] "   ++ msg
+stdoutLogger Debug   _   = liftIO $ return ()
+stdoutLogger Info    msg = liftIO . putStrLn $ "[Info] "    ++ msg
+stdoutLogger Notice  msg = liftIO . putStrLn $ "[Notice] "  ++ msg
+stdoutLogger Warning msg = liftIO . putStrLn $ "[Warning] " ++ msg
+stdoutLogger Error   msg = liftIO . putStrLn $ "[Error] "   ++ msg
+stdoutLogger Panic   msg = liftIO . putStrLn $ "[Panic] "   ++ msg
 
 debugLogger :: MonadIO m => Logger m
-debugLogger LDebug   msg = liftIO . putStrLn $ "[Debug] "   ++ msg
-debugLogger LInfo    msg = liftIO . putStrLn $ "[Info] "    ++ msg
-debugLogger LNotice  msg = liftIO . putStrLn $ "[Notice] "  ++ msg
-debugLogger LWarning msg = liftIO . putStrLn $ "[Warning] " ++ msg
-debugLogger LError   msg = liftIO . putStrLn $ "[Error] "   ++ msg
-debugLogger LPanic   msg = liftIO . putStrLn $ "[Panic] "   ++ msg
+debugLogger Debug msg = liftIO . putStrLn $ "[Debug] "   ++ msg
+debugLogger lvl   msg = stdoutLogger lvl msg
 
 data AuthenticationType = KeysAuthentication
                         | PasswordAuthentication

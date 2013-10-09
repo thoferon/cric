@@ -2,13 +2,12 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module SpecHelpers where
 
 import Cric.Core
 import Cric.TypeDefs
-
-import Test.Hspec
 
 import Data.List
 import Data.Maybe
@@ -17,31 +16,30 @@ import qualified Data.ByteString.Char8 as BS
 
 import System.Directory
 import System.IO
-import System.IO.Temp
 
-import Control.Monad
 import Control.Monad.Trans
 
 type ExecCommandMock = String -> Maybe (IO (Int, BS.ByteString))
 type SendFileMock    = Int -> FilePath -> FilePath -> Maybe (IO Integer)
 
 data SshMock = SshMock { execCommandMocks :: [ExecCommandMock]
-                       , sendFileMocks    :: [SendFileMock] }
+                       , sendFileMocks    :: [SendFileMock]
+                       }
 
 instance Read LogLevel where
   readsPrec _ str
-    | "LDebug"   `isPrefixOf` str = [(LDebug,   drop 6 str)]
-    | "LInfo"    `isPrefixOf` str = [(LInfo,    drop 5 str)]
-    | "LNotice"  `isPrefixOf` str = [(LNotice,  drop 7 str)]
-    | "LWarning" `isPrefixOf` str = [(LWarning, drop 8 str)]
-    | "LError"   `isPrefixOf` str = [(LError,   drop 6 str)]
-    | "LPanic"   `isPrefixOf` str = [(LPanic,   drop 6 str)]
+    | "Debug"   `isPrefixOf` str = [(Debug,   drop 5 str)]
+    | "Info"    `isPrefixOf` str = [(Info,    drop 4 str)]
+    | "Notice"  `isPrefixOf` str = [(Notice,  drop 6 str)]
+    | "Warning" `isPrefixOf` str = [(Warning, drop 7 str)]
+    | "Error"   `isPrefixOf` str = [(Error,   drop 5 str)]
+    | "Panic"   `isPrefixOf` str = [(Panic,   drop 5 str)]
     | otherwise = []
 
 instance SshSession SshMock where
   sshExecCommand (execCommandMocks -> fs) cmd =
-      foldl' (\acc f -> fromMaybe acc $ f cmd) (dfl cmd) fs
-    where dfl cmd = return (42, "no mock found: " <> BS.pack cmd)
+      foldl' (\acc f -> fromMaybe acc $ f cmd) initValue fs
+    where initValue = return (42, "no mock found: " <> BS.pack cmd)
   sshSendFile (sendFileMocks -> fs) perm from to =
     foldl' (\acc f -> fromMaybe acc $ f perm from to) (return 0) fs
 
@@ -66,19 +64,24 @@ testCric cric = liftIO $ testInstall cric (\_ _ -> return ()) defaultContext def
 testCricWith :: SshSession s => s -> Cric a -> IO a
 testCricWith mock cric = liftIO $ testInstallWith mock cric (\_ _ -> return ()) defaultContext defaultServer
 
--- it will not automatically closed the handles (good enough for tests, at least for now)
+-- it will not automatically close the handles (good enough for tests, at least for now)
 -- reading the logs will though
 testLogger :: IO (IO [(LogLevel, String)], Logger IO)
 testLogger = do
-  tmpDir <- getTemporaryDirectory
-  (path, handle) <- openTempFile tmpDir "cric-log-.test"
-  return (readLogs handle, makeLogger handle)
+    tmpDir <- getTemporaryDirectory
+    (_, handle) <- openTempFile tmpDir "cric-log-.test"
+    return (readLogs handle, makeLogger handle)
   where
     readLogs :: Handle -> IO [(LogLevel, String)]
     readLogs handle = do
       hSeek handle AbsoluteSeek 0
       contents <- hGetContents handle
-      return $ map read (lines contents)
+      return $ mapMaybe readMaybe (lines contents)
+
+    readMaybe :: Read a => String -> Maybe a
+    readMaybe str = case reads str of
+      [(v,"")] -> Just v
+      _        -> Nothing
 
     makeLogger :: Handle -> LogLevel -> String -> IO ()
     makeLogger handle lvl msg = hPrint handle (lvl, msg)

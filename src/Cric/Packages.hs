@@ -33,7 +33,7 @@ getPackageManager = getPackageManager' [("yum", Yum), ("apt-get", APT), ("rpm", 
 
 installPackage :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 installPackage pkgName = do
-  logMsg LInfo $ "Installing " ++ pkgName ++ " ..."
+  logMsg Info $ "Installing " ++ pkgName ++ " ..."
   pkgMgr <- getPackageManager
   result <- case pkgMgr of
     Yum -> installWithYum pkgName
@@ -41,8 +41,8 @@ installPackage pkgName = do
     RPM -> installWithRPM pkgName
     UnknownPackageManager -> return $ Left NoPackageManagerFound
   case result of
-    Left err -> logMsg LError $ "Error installing " ++ pkgName ++ " (" ++ show err ++ ")"
-    Right _  -> logMsg LInfo  $ "Package " ++ pkgName ++ " installed successfully."
+    Left err -> logMsg Error $ "Error installing " ++ pkgName ++ " (" ++ show err ++ ")"
+    Right _  -> logMsg Info  $ "Package " ++ pkgName ++ " installed successfully."
   return result
 
 installWithRPM :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
@@ -56,7 +56,7 @@ installWithAPT = execManager . ("apt-get install -y "++)
 
 removePackage :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 removePackage pkgName = do
-  logMsg LInfo $ "Removing " ++ pkgName ++ " ..."
+  logMsg Info $ "Removing " ++ pkgName ++ " ..."
   pkgMgr <- getPackageManager
   result <- case pkgMgr of
     Yum -> removeWithYum pkgName
@@ -64,8 +64,8 @@ removePackage pkgName = do
     RPM -> removeWithRPM pkgName
     UnknownPackageManager -> return $ Left NoPackageManagerFound
   case result of
-    Left err -> logMsg LError $ "Error removing " ++ pkgName ++ " (" ++ show err ++ ")"
-    Right _  -> logMsg LInfo  $ "Package " ++ pkgName ++ " removed successfully."
+    Left err -> logMsg Error $ "Error removing " ++ pkgName ++ " (" ++ show err ++ ")"
+    Right _  -> logMsg Info  $ "Package " ++ pkgName ++ " removed successfully."
   return result
 
 removeWithRPM :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
@@ -81,5 +81,5 @@ execManager :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 execManager cmd = do
   result <- exec cmd
   return $ case result of
-    Success output    -> Right output
-    Error code output -> Left $ UnknownPkgManagerError code output
+    Success output      -> Right output
+    Failure code output -> Left $ UnknownPkgManagerError code output

@@ -33,7 +33,7 @@ test = do
       let cric = exec "echo test"
       let sshMock = SshMock [const (Just $ return (1, "test2"))] []
       result <- liftIO $ testInstallWith sshMock cric logger context server
-      result `shouldBe` Error 1 "test2"
+      result `shouldBe` Failure 1 "test2"
 
     it "adds the context" $ do
       let cric = exec "echo \"test\" 'test'"
@@ -51,7 +51,7 @@ test = do
         (getLogs, logger') <- testLogger
         testInstall cric logger' defaultContext server
         getLogs
-      logs `shouldSatisfy` any (\(lvl, msg) -> lvl == LDebug && "echo test" `isInfixOf` msg)
+      logs `shouldSatisfy` any (\(lvl, msg) -> lvl == Debug && "echo test" `isInfixOf` msg)
 
     it "logs the output" $ do
       let cric = exec "echo test"
@@ -61,7 +61,7 @@ test = do
         (getLogs, logger') <- testLogger
         testInstallWith sshMock cric logger' defaultContext server
         getLogs
-      logs `shouldSatisfy` any (\(lvl, msg) -> lvl == LDebug && "test output" `isInfixOf` msg)
+      logs `shouldSatisfy` any (\(lvl, msg) -> lvl == Debug && "test output" `isInfixOf` msg)
 
   describe "run" $ do
     it "runs the command and sends back the ouput" $ do
@@ -112,13 +112,13 @@ test = do
 
   describe "logMsg" $ do
     it "uses the logger passed" $ do
-      let cric = logMsg LWarning "blah"
+      let cric = logMsg Warning "blah"
       logs <- liftIO $ do
         (getLogs, logger') <- testLogger
         let logger'' lvl msg = logger' lvl ("I am the one saying " ++ msg)
         testInstall cric logger'' defaultContext server
         getLogs
-      logs `shouldSatisfy` any (== (LWarning, "I am the one saying blah"))
+      logs `shouldSatisfy` any (== (Warning, "I am the one saying blah"))
 
 
   describe "asUser" $ do

@@ -33,7 +33,7 @@ instance Default UserOptions where
 
 createUser :: MonadCric m => String -> UserOptions -> m Result
 createUser u opts = do
-    logMsg LInfo $ "Creating user " ++ u ++ " ..."
+    logMsg Info $ "Creating user " ++ u ++ " ..."
     let cmdWithOptions = addLoginGroup (loginGroup opts)
                        . addGroups (groups opts)
                        . addUID (uid opts)
@@ -53,7 +53,7 @@ createUser u opts = do
 
 removeUser :: MonadCric m => String -> m Result
 removeUser u = do
-  logMsg LInfo $ "Removing user " ++ u ++ " ..."
+  logMsg Info $ "Removing user " ++ u ++ " ..."
   test <- testCommand "rmuser"
   let cmd = if test then "rmuser " else "deluser "
   exec $ cmd ++ u

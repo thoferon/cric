@@ -28,3 +28,4 @@ import Prelude hiding (log)
 
 import Cric.Core
 import Cric.TypeDefs
+import Cric.MonadCric
