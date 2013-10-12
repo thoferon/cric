@@ -14,40 +14,44 @@ stability:           alpha
 build-type:          Simple
 cabal-version:       >=1.8
 bug-reports:         http://hub.darcs.net/thoferon/cric/issues
-package-url:         http://hub.darcs.net/thoferon/cric
+homepage:            http://hub.darcs.net/thoferon/cric
 
 library
-  exposed-modules:     Cric, Cric.Core, Cric.TypeDefs, Cric.MonadCric,
-                       Cric.SystemInfo, Cric.Packages, Cric.Users, Cric.FileSystem
-                       Cric.Platform
+  exposed-modules:     Cric
+                     , Cric.Core
+                     , Cric.TypeDefs
+                     , Cric.MonadCric
+                     , Cric.SystemInfo
+                     , Cric.Packages
+                     , Cric.Users
+                     , Cric.FileSystem
+                     , Cric.Platform
   ghc-options:         -Wall
   hs-source-dirs:      src
-  -- other-modules:
-  build-depends:       base,
-                       simplessh,
-                       mtl >= 2,
-                       bytestring ==0.9.*,
-                       filepath ==1.3.*,
-                       directory ==1.1.*,
-                       MissingH ==1.2.*,
-                       text ==0.11.*,
-                       MissingH ==1.2.*,
-                       word8,
-                       data-default ==0.5.3
+  build-depends:       base >= 4 && < 5
+                     , simplessh
+                     , mtl >= 2
+                     , bytestring
+                     , filepath ==1.*
+                     , directory ==1.*
+                     , text
+                     , MissingH ==1.2.*
+                     , word8
+                     , data-default
 
 test-suite unit
   type:                exitcode-stdio-1.0
   main-is:             Suite.hs
   hs-source-dirs:      tests, src
-  build-depends:       base,
-                       simplessh,
-                       mtl >= 2,
-                       bytestring ==0.9.*,
-                       filepath ==1.3.*,
-                       directory ==1.1.*,
-                       MissingH ==1.2.*,
-                       text ==0.11.*,
-                       word8,
-                       data-default ==0.5.3,
-                       hspec >= 1.5,
-                       temporary ==1.1.*
+  build-depends:       base
+                     , simplessh
+                     , mtl >= 2
+                     , bytestring
+                     , filepath ==1.*
+                     , directory ==1.*
+                     , MissingH ==1.2.*
+                     , text
+                     , word8
+                     , data-default
+                     , hspec >= 1.5
+                     , temporary ==1.1.*

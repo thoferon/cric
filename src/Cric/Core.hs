@@ -11,21 +11,16 @@ module Cric.Core
   , runCric
   , install
   , installOn
-  , run
   , isSuccess
   , outputFromResult
   , defaultFileTransferOptions
   , dfto
-  , asUser
-  , inDir
-  , withEnv
   ) where
 
-import           Control.Monad                (liftM)
 import           Control.Monad.Trans
 
 import           Data.ByteString.Lazy.Char8   ()
-import           Data.List                    (isPrefixOf, partition)
+import           Data.List
 import           Data.String.Utils            (replace)
 import qualified Data.ByteString.Char8        as BS
 
@@ -34,6 +29,7 @@ import qualified Network.SSH.Client.SimpleSSH as SSH
 import           Cric.MonadCric
 import           Cric.TypeDefs
 
+-- | Monad transformer in the heart of Cric.
 newtype CricT m a = CricT
   { runCricT :: forall s. SshSession s
              => Logger m
@@ -66,10 +62,17 @@ instance Monad m => MonadCric (CricT m) where
   getContext         = getContextCricT
   getServer          = getServerCricT
 
+-- | Alias to 'runCricT', limiting its use with IO.
 runCric :: Cric a -> (forall s. SshSession s => Logger IO -> Context -> Server -> Executor s IO -> IO a)
 runCric = runCricT
 
-install :: MonadIO m => CricT m a -> Logger m -> Context -> Server -> m a
+-- | Connect to a server and run an installation (\"CricT m\" action) with simplessh.
+install :: MonadIO m
+        => CricT m a -- ^ What to do
+        -> Logger m  -- ^ Logger
+        -> Context   -- ^ Execution context
+        -> Server    -- ^ Connection information
+        -> m a
 install cric logger context server = runCricT cric logger context server executor
   where
     executor :: MonadIO m => Executor SSH.Session m
@@ -98,6 +101,7 @@ install cric logger context server = runCricT cric logger context server executo
         Left err  -> fail $ show err --TODO: change this
         Right res -> return res
 
+-- | Connect to a server and run an installation with the default logger and context.
 installOn :: MonadIO m => CricT m a -> Server -> m a
 installOn cric server = install cric stdoutLogger defaultContext server
 
@@ -129,9 +133,6 @@ execCricT cmd = do
     addUser context c = case currentUser context of
       "" -> c
       u  -> "sudo su " ++ u ++ " -c \'" ++ replace "\'" "\\\'" c ++ "\'"
-
-run :: MonadCric m => String -> m BS.ByteString
-run cmd = outputFromResult `liftM` exec cmd
 
 -- returns either the number of bytes tranferred
 -- or True/False whether the transfer has been successful
@@ -182,30 +183,3 @@ withChangedContextCricT :: (Context -> Context) -> CricT m a -> CricT m a
 withChangedContextCricT f cric = CricT $ \logger context server session ->
   let context' = f context
   in runCricT cric logger context' server session
-
-asUser :: MonadCric m => String -> m a -> m a
-asUser u cric = do
-    testResult <- asUser' $ exec "echo test if we can log in"
-    case testResult of
-      Success _   -> return ()
-      Failure _ _ -> logMsg Warning $ "Can't execute a command as user " ++ u
-    asUser' cric
-  where
-    asUser' = withChangedContext $ \context -> context { currentUser = u }
-
-inDir :: MonadCric m => FilePath -> m a -> m a
-inDir d cric = do
-    testResult <- inDir' $ exec "ls"
-    case testResult of
-      Success _   -> return ()
-      Failure _ _ -> logMsg Warning $ "Can't change directory to " ++ d
-    inDir' cric
-  where
-    inDir' = withChangedContext $ \context -> context { currentDir = d }
-
-withEnv :: MonadCric m => [(String, String)] -> m a -> m a
-withEnv e = withChangedContext $ \context -> context { currentEnv = mergeEnv (currentEnv context) e }
-  where
-    mergeEnv old [] = old
-    mergeEnv old (ev@(n,_):evs) = let (_,cleanOld) = partition ((==n) . fst) old
-                                  in mergeEnv (ev : cleanOld) evs

@@ -17,9 +17,10 @@ data PackageManager = RPM | Yum | APT
                     deriving (Show, Eq)
 
 data PkgManagerError = NoPackageManagerFound
-                     | UnknownPkgManagerError Int BS.ByteString
+                     | UnknownPkgManagerError Int BS.ByteString -- ^ Unknown error together with status code and output
                      deriving (Show, Eq)
 
+-- | Find a package manager on the server by testing if the command is available.
 getPackageManager :: MonadCric m => m PackageManager
 getPackageManager = getPackageManager' [("yum", Yum), ("apt-get", APT), ("rpm", RPM)]
   where
@@ -31,6 +32,7 @@ getPackageManager = getPackageManager' [("yum", Yum), ("apt-get", APT), ("rpm", 
         True -> return mgr
         False -> getPackageManager' rest
 
+-- | Install a package with the package manager found.
 installPackage :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 installPackage pkgName = do
   logMsg Info $ "Installing " ++ pkgName ++ " ..."
@@ -54,6 +56,7 @@ installWithYum = execManager . ("yum install -y "++)
 installWithAPT :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 installWithAPT = execManager . ("apt-get install -y "++)
 
+-- | Remove a package with the package manager found.
 removePackage :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 removePackage pkgName = do
   logMsg Info $ "Removing " ++ pkgName ++ " ..."

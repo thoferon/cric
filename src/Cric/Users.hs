@@ -10,13 +10,15 @@ import Data.List (foldl')
 import Cric
 import Cric.SystemInfo
 
+-- | Extra options for a user, see 'createUser'.
 data UserOptions = UserOptions
-  { loginGroup :: Maybe String
-  , groups     :: [String]
-  , uid        :: Maybe Int
+  { loginGroup :: Maybe String -- ^ The principal group of the user
+  , groups     :: [String]     -- ^ List of additional groups
+  , uid        :: Maybe Int    -- ^ User ID
   , shell      :: Maybe String
   } deriving Show
 
+-- | Default extra user options.
 defaultUserOptions :: UserOptions
 defaultUserOptions = UserOptions
   { loginGroup = Nothing
@@ -25,13 +27,18 @@ defaultUserOptions = UserOptions
   , shell      = Nothing
   }
 
+-- | Alias for 'defaultUserOptions'.
 duo :: UserOptions
 duo = defaultUserOptions
 
 instance Default UserOptions where
   def = duo
 
-createUser :: MonadCric m => String -> UserOptions -> m Result
+-- | Create a user on the server.
+createUser :: MonadCric m
+              => String      -- ^ Username
+              -> UserOptions -- ^ Extra options
+              -> m Result
 createUser u opts = do
     logMsg Info $ "Creating user " ++ u ++ " ..."
     let cmdWithOptions = addLoginGroup (loginGroup opts)
@@ -51,7 +58,10 @@ createUser u opts = do
     addLoginGroup Nothing   = id
     addLoginGroup (Just lg) = (++ " -g " ++ lg)
 
-removeUser :: MonadCric m => String -> m Result
+-- | Remove a user from the server.
+removeUser :: MonadCric m
+           => String -- ^ Username
+           -> m Result
 removeUser u = do
   logMsg Info $ "Removing user " ++ u ++ " ..."
   test <- testCommand "rmuser"
