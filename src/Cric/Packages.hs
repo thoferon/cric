@@ -17,20 +17,24 @@ data PackageManager = RPM | Yum | APT
                     deriving (Show, Eq)
 
 data PkgManagerError = NoPackageManagerFound
-                     | UnknownPkgManagerError Int BS.ByteString -- ^ Unknown error together with status code and output
+                     | UnknownPkgManagerError Result
+                     -- ^ Unknown error together with status code and output
                      deriving (Show, Eq)
 
 -- | Find a package manager on the server by testing if the command is available.
 getPackageManager :: MonadCric m => m PackageManager
-getPackageManager = getPackageManager' [("yum", Yum), ("apt-get", APT), ("rpm", RPM)]
+getPackageManager = getPackageManager' [ ("yum", Yum)
+                                       , ("apt-get", APT)
+                                       , ("rpm", RPM)
+                                       ]
   where
     getPackageManager' :: MonadCric m => [(String, PackageManager)] -> m PackageManager
     getPackageManager' [] = return UnknownPackageManager
     getPackageManager' ((cmd,mgr):rest) = do
       test <- testCommand cmd
-      case test of
-        True -> return mgr
-        False -> getPackageManager' rest
+      if test
+        then return mgr
+        else getPackageManager' rest
 
 -- | Install a package with the package manager found.
 installPackage :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
@@ -83,6 +87,6 @@ removeWithAPT = execManager . ("apt-get remove -y "++)
 execManager :: MonadCric m => String -> m (Either PkgManagerError BS.ByteString)
 execManager cmd = do
   result <- exec cmd
-  return $ case result of
-    Success output      -> Right output
-    Failure code output -> Left $ UnknownPkgManagerError code output
+  return $ if isSuccess result
+             then Right $ outFromResult result
+             else Left $ UnknownPkgManagerError result

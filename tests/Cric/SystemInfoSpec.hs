@@ -30,9 +30,9 @@ test = do
 
   describe "testCommand" $ do
     let cric = testCommand "cmd"
-    let testMock resp cmd = if "which cmd" `isInfixOf` cmd
-          then Just $ return resp
-          else Nothing
+    let testMock (code, out) cmd = if "which cmd" `isInfixOf` cmd
+                                     then Just $ return (Left code, out, "")
+                                     else Nothing
 
     it "returns True if the command exists" $ do
       let sshMock = SshMock [testMock (0, "/bin/cmd")] []

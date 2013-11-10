@@ -46,7 +46,7 @@ class Monad m => MonadCric m where
 
 -- | Helper around 'exec' which simply returns the output without information about the status code.
 run :: MonadCric m => String -> m BS.ByteString
-run cmd = outputFromResult `liftM` exec cmd
+run cmd = outFromResult `liftM` exec cmd
 
 -- | Execute a Cric action as a different user.
 asUser :: MonadCric m
@@ -55,9 +55,8 @@ asUser :: MonadCric m
        -> m a
 asUser u cric = do
     testResult <- asUser' $ exec "echo test if we can log in"
-    case testResult of
-      Success _   -> return ()
-      Failure _ _ -> logMsg Warning $ "Can't execute a command as user " ++ u
+    unless (isSuccess testResult) $
+           logMsg Warning $ "Can't execute a command as user " ++ u
     asUser' cric
   where
     asUser' = withChangedContext $ \context -> context { currentUser = u }
@@ -66,9 +65,8 @@ asUser u cric = do
 inDir :: MonadCric m => FilePath -> m a -> m a
 inDir d cric = do
     testResult <- inDir' $ exec "ls"
-    case testResult of
-      Success _   -> return ()
-      Failure _ _ -> logMsg Warning $ "Can't change directory to " ++ d
+    unless (isSuccess testResult) $
+           logMsg Warning $ "Can't change directory to " ++ d
     inDir' cric
   where
     inDir' = withChangedContext $ \context -> context { currentDir = d }

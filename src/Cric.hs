@@ -16,8 +16,10 @@ module Cric
   -- Functions
   , runCric
   , install, installOn
+  , mkExecutor
   , run
-  , isSuccess, outputFromResult
+  , isSuccess
+  , outFromResult, errFromResult
 --  , testCommand
   , asUser
   , inDir

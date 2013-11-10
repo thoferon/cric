@@ -4,6 +4,7 @@ module Cric.CoreSpec
   ( test
   ) where
 
+import           Control.Monad.Error
 import           Control.Monad.Trans
 
 import           Data.List
@@ -25,25 +26,37 @@ test = do
   describe "exec" $ do
     it "returns Success if the exit code is 0 with the outputs" $ do
       let cric = exec "echo test"
-      let sshMock = SshMock [const (Just $ return (0, "test2"))] []
+          sshMock = SshMock [const (Just $ return (Left 0, "out", "err"))] []
       result <- liftIO $ testInstallWith sshMock cric logger context server
-      result `shouldBe` Success "test2"
+      result `shouldBe` Success "out" "err"
 
-    it "returns Success if the exit code is 0 with the outputs" $ do
+    it "returns Failure if the exit code is non-0 with code and outputs" $ do
       let cric = exec "echo test"
-      let sshMock = SshMock [const (Just $ return (1, "test2"))] []
+          sshMock = SshMock [const (Just $ return (Left 1, "out", "err"))] []
       result <- liftIO $ testInstallWith sshMock cric logger context server
-      result `shouldBe` Failure 1 "test2"
+      result `shouldBe` Failure 1 "out" "err"
+
+    it "returns Interrupted if there is a signal with signal and outputs" $ do
+      let cric = exec "echo test"
+          sshMock = SshMock [const (Just $ return (Right "HUP", "out", "err"))] []
+      result <- liftIO $ testInstallWith sshMock cric logger context server
+      result `shouldBe` Interrupted "HUP" "out" "err"
+
+    it "returns SSHError with the error message" $ do
+      let cric = exec "echo test"
+          sshMock = SshMock [const (Just $ throwError "some error")] []
+      result <- liftIO $ testInstallWith sshMock cric logger context server
+      result `shouldBe` SSHError "some error"
 
     it "adds the context" $ do
       let cric = exec "echo \"test\" 'test'"
-      let context' = defaultContext { currentUser = "user", currentDir = "dir", currentEnv = [("a", "1")] }
-      let mockFunc cmd = if cmd == "sudo su user -c 'cd dir; export a=1; echo \"test\" \\'test\\''"
-                          then Just $ return (0, "successful")
+          context' = defaultContext { currentUser = "user", currentDir = "dir", currentEnv = [("a", "1")] }
+          mockFunc cmd = if cmd == "sudo su user -c 'cd dir; export a=1; echo \"test\" \\'test\\''"
+                          then Just $ return (Left 0, "successful", "")
                           else Nothing
-      let sshMock = SshMock [mockFunc] []
+          sshMock = SshMock [mockFunc] []
       result <- liftIO $ testInstallWith sshMock cric logger context' server
-      result `shouldBe` Success "successful"
+      result `shouldBe` Success "successful" ""
 
     it "logs the command" $ do
       let cric = exec "echo test"
@@ -54,9 +67,9 @@ test = do
       logs `shouldSatisfy` any (\(lvl, msg) -> lvl == Debug && "echo test" `isInfixOf` msg)
 
     it "logs the output" $ do
-      let cric = exec "echo test"
-      let mockFunc _ = Just $ return (0, "test output")
-      let sshMock = SshMock [mockFunc] []
+      let cric       = exec "echo test"
+          mockFunc _ = Just $ return (Left 0, "test output", "")
+          sshMock    = SshMock [mockFunc] []
       logs <- liftIO $ do
         (getLogs, logger') <- testLogger
         testInstallWith sshMock cric logger' defaultContext server
@@ -66,35 +79,35 @@ test = do
   describe "run" $ do
     it "runs the command and sends back the ouput" $ do
       let cric = exec "echo test"
-      let mockFunc cmd = if "echo test" `isInfixOf` cmd
-            then Just $ return (0, "test output")
+          mockFunc cmd = if "echo test" `isInfixOf` cmd
+            then Just $ return (Left 0, "test output", "")
             else Nothing
-      let sshMock = SshMock [mockFunc] []
+          sshMock = SshMock [mockFunc] []
       result <- liftIO $ testInstallWith sshMock cric logger context server
-      result `shouldBe` Success "test output"
+      result `shouldBe` Success "test output" ""
 
   describe "sendFile" $ do
     it "sends a file with correct destination/permissions (and returns the size if no md5sum is found)" $ do
       let cric = sendFile "from" "to" dfto
-      let sendMock perm from to = if (perm, from, to) == (permissions dfto, "from", "to")
+          sendMock perm from to = if (perm, from, to) == (permissions dfto, "from", "to")
                                   then Just $ return 1337
                                   else Nothing
-      -- testMock is used to disable the checksum and return 1337
-      let testMock cmds = Just $ return (127, "")
-      let sshMock = SshMock [testMock] [sendMock]
+          -- testMock is used to disable the checksum and return 1337
+          testMock cmds = Just $ return (Left 127, "", "")
+          sshMock = SshMock [testMock] [sendMock]
       result <- liftIO $ testInstallWith sshMock cric logger context server
       result `shouldBe` Left 1337
 
     it "returns a boolean if a md5sum is found" $ do
       let cric = sendFile "from" "to" $ dfto { md5Hash = Just "test md5 hash" }
-      let sendMock perm from to = Just $ return 1337
-      let testMock cmd = if "which md5" `isInfixOf` cmd
-            then Just $ return (0, "/usr/bin/md5\n")
-            else Nothing
-      let md5Mock cmd = if "md5 -q to" `isInfixOf` cmd
-            then Just $ return (0, "test md5 hash\n")
-            else Nothing
-      let sshMock = SshMock [testMock, md5Mock] [sendMock]
+          sendMock perm from to = Just $ return 1337
+          testMock cmd = if "which md5" `isInfixOf` cmd
+                           then Just $ return (Left 0, "/usr/bin/md5\n", "")
+                           else Nothing
+          md5Mock cmd = if "md5 -q to" `isInfixOf` cmd
+                          then Just $ return (Left 0, "test md5 hash\n", "")
+                          else Nothing
+          sshMock = SshMock [testMock, md5Mock] [sendMock]
       result <- liftIO $ testInstallWith sshMock cric logger context server
       result `shouldBe` Right True
 

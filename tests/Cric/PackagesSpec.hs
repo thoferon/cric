@@ -52,7 +52,8 @@ test = do
                  $ defaultSshMock
 
         result <- testCricWith mock $ installPackage "haskell-platform"
-        result `shouldBe` Left (UnknownPkgManagerError 1 "installation failed")
+        result `shouldBe`
+          Left (UnknownPkgManagerError $ Failure 1 "installation failed" "")
 
   describe "removePackage" $ do
     it "uses the package manager found" $ do
@@ -74,4 +75,5 @@ test = do
                  $ defaultSshMock
 
         result <- testCricWith mock $ removePackage "haskell-platform"
-        result `shouldBe` Left (UnknownPkgManagerError 1 "removal failed")
+        result `shouldBe`
+          Left (UnknownPkgManagerError $ Failure 1 "removal failed" "")

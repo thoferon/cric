@@ -1,14 +1,14 @@
-module Cric.FileSystemSpec (
-  test
+module Cric.FileSystemSpec
+  ( test
   ) where
 
-import Test.Hspec
-import SpecHelpers
+import           Test.Hspec
+import           SpecHelpers
 
-import Cric
-import Cric.FileSystem
+import           Cric
+import           Cric.FileSystem
 
-import Data.List
+import           Data.List
 import qualified Data.ByteString.Char8 as BS
 
 test :: Spec
@@ -44,4 +44,4 @@ test = do
       result `shouldSatisfy` (`outputContains` "chown user:group filepath")
 
 outputContains :: Result -> String -> Bool
-outputContains res str = isInfixOf str . BS.unpack $ outputFromResult res
+outputContains res str = isInfixOf str . BS.unpack $ outFromResult res

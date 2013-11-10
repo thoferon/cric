@@ -10,14 +10,17 @@ module Cric.Core
   , Executor
   , runCric
   , install
+  , mkExecutor
   , installOn
   , isSuccess
-  , outputFromResult
+  , outFromResult
+  , errFromResult
   , defaultFileTransferOptions
   , dfto
   ) where
 
 import           Control.Monad.Trans
+import           Control.Monad.Error
 
 import           Data.ByteString.Lazy.Char8   ()
 import           Data.List
@@ -73,33 +76,34 @@ install :: MonadIO m
         -> Context   -- ^ Execution context
         -> Server    -- ^ Connection information
         -> m a
-install cric logger context server = runCricT cric logger context server executor
-  where
-    executor :: MonadIO m => Executor SSH.Session m
-    executor f = liftIO $ do
-      let action = case authType server of
-            KeysAuthentication ->
-              SSH.withSessionKey
-                (hostname server)
-                (toInteger $ port server)
-                (knownHostsPath server)
-                (user server)
-                (publicKeyPath server)
-                (privateKeyPath server)
-                (passphrase server)
-                (liftIO . f)
-            PasswordAuthentication ->
-              SSH.withSessionPassword
-                (hostname server)
-                (toInteger $ port server)
-                (knownHostsPath server)
-                (user server)
-                (password server)
-                (liftIO . f)
-      eRes <- SSH.runSimpleSSH action
-      case eRes of
-        Left err  -> fail $ show err --TODO: change this
-        Right res -> return res
+install cric logger context server = runCricT cric logger context server $ mkExecutor server
+
+-- | Make an 'Executor' from a 'Server' using simplessh. It can be used with 'runCricT'.
+mkExecutor :: MonadIO m => Server -> Executor SSH.Session m
+mkExecutor server f = liftIO $ do
+  let action = case authType server of
+        KeysAuthentication ->
+          SSH.withSessionKey
+            (hostname server)
+            (toInteger $ port server)
+            (knownHostsPath server)
+            (user server)
+            (publicKeyPath server)
+            (privateKeyPath server)
+            (passphrase server)
+            (liftIO . f)
+        PasswordAuthentication ->
+          SSH.withSessionPassword
+            (hostname server)
+            (toInteger $ port server)
+            (knownHostsPath server)
+            (user server)
+            (password server)
+            (liftIO . f)
+  eRes <- SSH.runSimpleSSH action
+  case eRes of
+    Left err  -> fail $ show err --TODO: change this
+    Right res -> return res
 
 -- | Connect to a server and run an installation with the default logger and context.
 installOn :: MonadIO m => CricT m a -> Server -> m a
@@ -111,19 +115,26 @@ execCricT cmd = do
     let cmd' = addUser context . addDir context . addEnv (currentEnv context) $ cmd
     logMsg Debug $ "Executing " ++ cmd' ++ " ..."
     res <- exec' cmd'
-    let output = case res of
-                   Success resp   | resp == BS.empty -> "No output."
-                                  | otherwise        -> resp
-                   Failure _ resp | resp == BS.empty -> "No output."
-                                  | otherwise        -> resp
-    logMsg Debug $ "Executed: " ++ cmd' ++ "\nOutput: " ++ (BS.unpack output)
+    let out = case outFromResult res of
+                ""   -> "No output."
+                out' -> out'
+        err = case errFromResult res of
+                ""   -> "No output."
+                err' -> err'
+    logMsg Debug $ "Executed: " ++ cmd' ++ "\n"
+                ++ "Stdout: " ++ BS.unpack out ++ "\n"
+                ++ "Stderr: " ++ BS.unpack err
     return res
   where
     exec' cmdWithContext = CricT $ \_ _ _ executor -> do
-      (code, output) <- executor $ \session -> sshExecCommand session cmdWithContext
-      return $ if code == 0
-               then Success output
-               else Failure code output
+      eRes <- executor $ \session ->
+        runErrorT $ sshExecCommand session cmdWithContext
+      return $ case eRes of
+        Left err -> SSHError err
+        Right (exit, out, err) -> case exit of
+          Left 0    -> Success out err
+          Left code -> Failure code out err
+          Right sig -> Interrupted sig out err
 
     addEnv [] c = c
     addEnv ((name,value):rest) c = addEnv rest $ "export " ++ name ++ "=" ++ value ++ "; " ++ c
@@ -156,19 +167,19 @@ sendFileCricT from to options = do
       testCmd <- testCommand cmdName
       if testCmd
         then do
-          res <- execCricT (toCmd to)
+          res <- execCricT $ toCmd to
           return . Right . (hash `isPrefixOf`) . BS.unpack $ case res of
-            Success bs   -> bs
-            Failure _ bs -> bs
+            Success bs _       -> bs
+            Failure _ bs _     -> bs
+            Interrupted _ bs _ -> bs
+            SSHError _         -> ""
         else
           testHash hash rest elseCric
 
     testCommand :: Monad m => String -> CricT m Bool
     testCommand cmd = do
       res <- execCricT $ "which " ++ cmd
-      return $ case res of
-        Success _   -> True
-        Failure _ _ -> False
+      return $ isSuccess res
 
 getServerCricT :: Monad m => CricT m Server
 getServerCricT = CricT $ \_ _ server _ -> return server

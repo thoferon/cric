@@ -1,6 +1,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Cric.TypeDefs
   ( Server(..)
@@ -13,7 +14,8 @@ module Cric.TypeDefs
   , Context(..)
   , SshSession(..)
   , isSuccess
-  , outputFromResult
+  , outFromResult
+  , errFromResult
   , defaultServer
   , defaultContext
   , defaultFileTransferOptions
@@ -24,6 +26,7 @@ module Cric.TypeDefs
   ) where
 
 import           Control.Monad.Trans
+import           Control.Monad.Error
 
 import           Data.Default
 import qualified Data.ByteString.Char8        as BS
@@ -34,20 +37,35 @@ import           System.FilePath
 import qualified Network.SSH.Client.SimpleSSH as SSH
 
 -- | Structure representing the result of a command execution.
-data Result = Success BS.ByteString     -- ^ Success with what was printed to stdout
-            | Failure Int BS.ByteString -- ^ Failure with the status code and stdout
-            deriving (Show, Eq)
+data Result
+  = Success BS.ByteString BS.ByteString
+  -- ^ Success with what was printed to stdout and stderr
+  | Failure Integer BS.ByteString BS.ByteString
+  -- ^ Failure with the status code, stdout and stderr
+  | Interrupted BS.ByteString BS.ByteString BS.ByteString
+  -- ^ Signal, stdout and stderr
+  | SSHError String
+  deriving (Show, Eq)
 
 -- | Helper function to test for success.
 isSuccess :: Result -> Bool
-isSuccess (Success _) = True
-isSuccess _           = False
+isSuccess (Success _ _) = True
+isSuccess _             = False
 
 -- | Extract the output of a command execution.
-outputFromResult :: Result -> BS.ByteString
-outputFromResult res = case res of
-  Success output   -> output
-  Failure _ output -> output
+outFromResult :: Result -> BS.ByteString
+outFromResult res = case res of
+  Success out _       -> out
+  Failure _ out _     -> out
+  Interrupted _ out _ -> out
+  SSHError _          -> ""
+
+errFromResult :: Result -> BS.ByteString
+errFromResult res = case res of
+  Success _ err       -> err
+  Failure _ _ err     -> err
+  Interrupted _ _ err -> err
+  SSHError _          -> ""
 
 -- | Extra options to pass to 'sendFile'.
 data FileTransferOptions = FileTransferOptions
@@ -66,8 +84,7 @@ defaultFileTransferOptions = FileTransferOptions
 dfto :: FileTransferOptions
 dfto = defaultFileTransferOptions
 
-instance Default FileTransferOptions where
-  def = dfto
+instance Default FileTransferOptions where def = dfto
 
 -- | Way to execute the SSH command into another monad.
 type Executor s m = forall a. (s -> IO a) -> m a
@@ -79,7 +96,12 @@ class SshSession s where
   -- | Execute a command on an SSH session.
   sshExecCommand :: s                       -- ^ Session
                  -> String                  -- ^ Command
-                 -> IO (Int, BS.ByteString) -- ^ Status code & output
+                 -> ErrorT String IO
+                    ( Either Integer BS.ByteString
+                    , BS.ByteString
+                    , BS.ByteString
+                    ) -- ^ Status code or signal & stdout/stderr
+
   -- | Send a file through SSH.
   sshSendFile    :: s          -- ^ Session
                  -> Int        -- ^ File mode
@@ -89,10 +111,16 @@ class SshSession s where
 
 instance SshSession SSH.Session where
   sshExecCommand session cmd = do
-    eRes <- SSH.runSimpleSSH $ SSH.execCommand session cmd
+    eRes <- liftIO $ SSH.runSimpleSSH $ SSH.execCommand session cmd
     case eRes of
-      Left err  -> error $ "FIXME: Cric should bubble the errors up, received: " ++ show err
-      Right res -> return (fromInteger $ SSH.exitCode res, SSH.content res)
+      Left err  -> throwError $ "SSH error: " ++ show err
+      Right res -> do
+        let exit = case SSH.resultExit res of
+                     SSH.ExitSuccess      -> Left 0
+                     SSH.ExitFailure code -> Left code
+                     SSH.ExitSignal  sig  -> Right sig
+        return (exit, SSH.resultOut res, SSH.resultErr res)
+
   sshSendFile session mode source target = do
     eRes <- SSH.runSimpleSSH $ SSH.sendFile session (toInteger mode) source target
     case eRes of
@@ -100,7 +128,9 @@ instance SshSession SSH.Session where
       Right res -> return res
 
 -- | The different levels used by the logger.
-data LogLevel = Debug | Info | Notice | Warning | Error | Panic deriving (Show, Eq)
+data LogLevel
+  = Debug | Info | Notice | Warning | Error | Panic
+  deriving (Show, Eq)
 
 -- | A logger in a monad, e.g. 'CricT' IO.
 type Logger m = LogLevel -> String -> m ()
@@ -165,6 +195,8 @@ defaultServer = Server
   , passphrase     = ""
   , authType       = KeysAuthentication
   }
+
+instance Default Server where def = defaultServer
 
 -- | Add paths to the default 'Server'.
 --

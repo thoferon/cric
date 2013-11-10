@@ -31,8 +31,7 @@ defaultUserOptions = UserOptions
 duo :: UserOptions
 duo = defaultUserOptions
 
-instance Default UserOptions where
-  def = duo
+instance Default UserOptions where def = duo
 
 -- | Create a user on the server.
 createUser :: MonadCric m

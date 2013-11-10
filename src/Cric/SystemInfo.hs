@@ -33,6 +33,4 @@ firstLine = BS.takeWhile (/='\n')
 testCommand :: MonadCric m => String -> m Bool
 testCommand cmd = do
   res <- exec $ "which " ++ cmd
-  return $ case res of
-    Success _   -> True
-    Failure _ _ -> False
+  return $ isSuccess res

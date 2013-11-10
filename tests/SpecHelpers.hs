@@ -6,25 +6,28 @@
 
 module SpecHelpers where
 
-import Cric.Core
-import Cric.TypeDefs
+import           Control.Monad.Error
+import           Control.Monad.Trans
 
-import Data.List
-import Data.Maybe
-import Data.Monoid
+import           Data.List
+import           Data.Maybe
+import           Data.Monoid
 import qualified Data.ByteString.Char8 as BS
 
-import System.Directory
-import System.IO
+import           System.Directory
+import           System.IO
 
-import Control.Monad.Trans
+import           Cric.Core
+import           Cric.TypeDefs
 
-type ExecCommandMock = String -> Maybe (IO (Int, BS.ByteString))
-type SendFileMock    = Int -> FilePath -> FilePath -> Maybe (IO Integer)
+type ExecCommandMock
+  = String -> Maybe (ErrorT String IO (Either Integer BS.ByteString, BS.ByteString, BS.ByteString))
+type SendFileMock = Int -> FilePath -> FilePath -> Maybe (IO Integer)
 
-data SshMock = SshMock { execCommandMocks :: [ExecCommandMock]
-                       , sendFileMocks    :: [SendFileMock]
-                       }
+data SshMock = SshMock
+  { execCommandMocks :: [ExecCommandMock]
+  , sendFileMocks    :: [SendFileMock]
+  }
 
 instance Read LogLevel where
   readsPrec _ str
@@ -39,17 +42,20 @@ instance Read LogLevel where
 instance SshSession SshMock where
   sshExecCommand (execCommandMocks -> fs) cmd =
       foldl' (\acc f -> fromMaybe acc $ f cmd) initValue fs
-    where initValue = return (42, "no mock found: " <> BS.pack cmd)
+    where initValue = return (Left 42, "no mock found: " <> BS.pack cmd, "")
+
   sshSendFile (sendFileMocks -> fs) perm from to =
     foldl' (\acc f -> fromMaybe acc $ f perm from to) (return 0) fs
 
 defaultSshMock :: SshMock
 defaultSshMock = SshMock [] []
 
-mockCommand :: String -> (Int, BS.ByteString) -> SshMock -> SshMock
-mockCommand cmd result sshMock =
-  let mock receivedCmd = if cmd `isInfixOf` receivedCmd then Just $ return result else Nothing
-  in sshMock { execCommandMocks = mock : execCommandMocks sshMock  }
+mockCommand :: String -> (Integer, BS.ByteString) -> SshMock -> SshMock
+mockCommand cmd (code, out) sshMock =
+  let mock receivedCmd = if cmd `isInfixOf` receivedCmd
+                           then Just $ return (Left code, out, "")
+                           else Nothing
+  in sshMock { execCommandMocks = mock : execCommandMocks sshMock }
 
 testInstall :: Cric a -> Logger IO -> Context -> Server -> IO a
 testInstall = testInstallWith defaultSshMock
