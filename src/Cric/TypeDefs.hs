@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Cric.TypeDefs
   ( Server(..)
@@ -26,7 +27,6 @@ module Cric.TypeDefs
   ) where
 
 import           Control.Monad.Trans
-import           Control.Monad.Error
 
 import           Data.Default
 import qualified Data.ByteString.Char8        as BS
@@ -87,45 +87,43 @@ dfto = defaultFileTransferOptions
 instance Default FileTransferOptions where def = dfto
 
 -- | Way to execute the SSH command into another monad.
-type Executor s m = forall a. (s -> IO a) -> m a
+type Executor s m = forall a. (s -> SessionMonad s a) -> m (Either String a)
 
 -- | Typeclass used as an interface between Cric and SSH.
 --
 -- It is the bridge with simplessh and, for tests, to mocks.
 class SshSession s where
+  -- | The monad in which the session should be used.
+  type SessionMonad s a
+
   -- | Execute a command on an SSH session.
-  sshExecCommand :: s                       -- ^ Session
-                 -> String                  -- ^ Command
-                 -> ErrorT String IO
-                    ( Either Integer BS.ByteString
-                    , BS.ByteString
-                    , BS.ByteString
-                    ) -- ^ Status code or signal & stdout/stderr
+  sshExecCommand :: s      -- ^ Session
+                 -> String -- ^ Command
+                 -> SessionMonad s
+                      ( Either Integer BS.ByteString
+                      , BS.ByteString
+                      , BS.ByteString
+                      ) -- ^ Status code or signal & stdout/stderr
 
   -- | Send a file through SSH.
-  sshSendFile    :: s          -- ^ Session
-                 -> Int        -- ^ File mode
-                 -> FilePath   -- ^ Local path
-                 -> FilePath   -- ^ Remote path
-                 -> IO Integer -- ^ Bytes transferred
+  sshSendFile :: s        -- ^ Session
+              -> Int      -- ^ File mode
+              -> FilePath -- ^ Local path
+              -> FilePath -- ^ Remote path
+              -> SessionMonad s Integer -- ^ Bytes transferred
 
 instance SshSession SSH.Session where
-  sshExecCommand session cmd = do
-    eRes <- liftIO $ SSH.runSimpleSSH $ SSH.execCommand session cmd
-    case eRes of
-      Left err  -> throwError $ "SSH error: " ++ show err
-      Right res -> do
-        let exit = case SSH.resultExit res of
-                     SSH.ExitSuccess      -> Left 0
-                     SSH.ExitFailure code -> Left code
-                     SSH.ExitSignal  sig  -> Right sig
-        return (exit, SSH.resultOut res, SSH.resultErr res)
+  type SessionMonad SSH.Session a = SSH.SimpleSSH a
 
-  sshSendFile session mode source target = do
-    eRes <- SSH.runSimpleSSH $ SSH.sendFile session (toInteger mode) source target
-    case eRes of
-      Left err  -> error $ "FIXME: Cric should bubble the errors up, received: " ++ show err
-      Right res -> return res
+  sshExecCommand session cmd = do
+    res <- SSH.execCommand session cmd
+    let exit = case SSH.resultExit res of
+                 SSH.ExitSuccess      -> Left 0
+                 SSH.ExitFailure code -> Left code
+                 SSH.ExitSignal  sig  -> Right sig
+    return (exit, SSH.resultOut res, SSH.resultErr res)
+
+  sshSendFile session mode source target = SSH.sendFile session (toInteger mode) source target
 
 -- | The different levels used by the logger.
 data LogLevel

@@ -23,10 +23,10 @@ class Monad m => MonadCric m where
   --
   -- If a md5 hash has been specified, the function returns whether the hash matches.
   -- Otherwise, it returns the number of bytes transferred.
-  sendFile :: FilePath                -- ^ Local path
-           -> FilePath                -- ^ Remote path
-           -> FileTransferOptions     -- ^ Extra options
-           -> m (Either Integer Bool) -- ^ Bytes transferred or md5 check success
+  sendFile :: FilePath            -- ^ Local path
+           -> FilePath            -- ^ Remote path
+           -> FileTransferOptions -- ^ Extra options
+           -> m (Maybe String)    -- ^ The error if any
 
   -- | Execute a cric action with a modified context.
   withChangedContext :: (Context -> Context) -- ^ Function to change the context

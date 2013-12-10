@@ -19,8 +19,8 @@ module Cric.Core
   , dfto
   ) where
 
+import           Control.Applicative
 import           Control.Monad.Trans
-import           Control.Monad.Error
 
 import           Data.ByteString.Lazy.Char8   ()
 import           Data.List
@@ -65,6 +65,17 @@ instance Monad m => MonadCric (CricT m) where
   getContext         = getContextCricT
   getServer          = getServerCricT
 
+instance Functor f => Functor (CricT f) where
+  fmap f cric = CricT $ \logger context server executor ->
+    fmap f $ runCricT cric logger context server executor
+
+instance Applicative f => Applicative (CricT f) where
+  pure val = CricT $ \_ _ _ _ -> pure val
+  cff <*> cfa = CricT $ \logger context server executor ->
+    let ff = runCricT cff logger context server executor
+        fa = runCricT cfa logger context server executor
+    in ff <*> fa
+
 -- | Alias to 'runCricT', limiting its use with IO.
 runCric :: Cric a -> (forall s. SshSession s => Logger IO -> Context -> Server -> Executor s IO -> IO a)
 runCric = runCricT
@@ -80,7 +91,7 @@ install cric logger context server = runCricT cric logger context server $ mkExe
 
 -- | Make an 'Executor' from a 'Server' using simplessh. It can be used with 'runCricT'.
 mkExecutor :: MonadIO m => Server -> Executor SSH.Session m
-mkExecutor server f = liftIO $ do
+mkExecutor server f = do
   let action = case authType server of
         KeysAuthentication ->
           SSH.withSessionKey
@@ -91,7 +102,7 @@ mkExecutor server f = liftIO $ do
             (publicKeyPath server)
             (privateKeyPath server)
             (passphrase server)
-            (liftIO . f)
+            f
         PasswordAuthentication ->
           SSH.withSessionPassword
             (hostname server)
@@ -99,11 +110,11 @@ mkExecutor server f = liftIO $ do
             (knownHostsPath server)
             (user server)
             (password server)
-            (liftIO . f)
-  eRes <- SSH.runSimpleSSH action
-  case eRes of
-    Left err  -> fail $ show err --TODO: change this
-    Right res -> return res
+            f
+  eRes <- liftIO $ SSH.runSimpleSSH action
+  return $ case eRes of
+    Left err  -> Left $ show err
+    Right res -> Right res
 
 -- | Connect to a server and run an installation with the default logger and context.
 installOn :: MonadIO m => CricT m a -> Server -> m a
@@ -127,8 +138,7 @@ execCricT cmd = do
     return res
   where
     exec' cmdWithContext = CricT $ \_ _ _ executor -> do
-      eRes <- executor $ \session ->
-        runErrorT $ sshExecCommand session cmdWithContext
+      eRes <- executor $ \session -> sshExecCommand session cmdWithContext
       return $ case eRes of
         Left err -> SSHError err
         Right (exit, out, err) -> case exit of
@@ -148,33 +158,36 @@ execCricT cmd = do
 -- returns either the number of bytes tranferred
 -- or True/False whether the transfer has been successful
 -- if the md5 command is available
-sendFileCricT :: Monad m => FilePath -> FilePath -> FileTransferOptions -> CricT m (Either Integer Bool)
+sendFileCricT :: Monad m => FilePath -> FilePath -> FileTransferOptions -> CricT m (Maybe String)
 sendFileCricT from to options = do
     logMsgCricT Info $ "Transferring file from `" ++ from ++ "` to `" ++ to ++ "` ..."
-    bytes <- CricT $ \_ _ _ executor -> do
-      executor $ \session -> sshSendFile session (permissions options) from to
-    logMsgCricT Info $ show bytes ++ " bytes transferred."
-
-    let lbytes = return $ Left bytes
-    case md5Hash options of
-      Just hash -> testHash hash [("md5", ("md5 -q "++)), ("md5sum", ("md5sum "++))] lbytes
-      Nothing -> lbytes
-
+    -- TOO: That's a bit nasty
+    eRes <- CricT $ \_ _ _ executor -> executor $ \session -> do
+      sshSendFile session (permissions options) from to
+    case eRes :: Either String Integer of
+      Right bytes -> do
+        logMsgCricT Info $ show bytes ++ " bytes transferred."
+        case md5Hash options of
+          Nothing -> return Nothing
+          Just hash -> do
+            mCheck <- testHash hash [("md5", ("md5 -q "++)), ("md5sum", ("md5sum "++))]
+            return $ mCheck >>= (\check -> if check then Nothing else Just "MD5 mismatch")
+      Left err -> return $ Just $ "SSH Error: " ++ err
   where
-    testHash :: Monad m => String -> [(String, FilePath -> String)] -> CricT m (Either Integer Bool) -> CricT m (Either Integer Bool)
-    testHash _ [] elseCric = elseCric
-    testHash hash ((cmdName, toCmd):rest) elseCric = do
+    testHash :: Monad m => String -> [(String, FilePath -> String)] -> CricT m (Maybe Bool)
+    testHash _ [] = return Nothing
+    testHash hash ((cmdName, toCmd):rest) = do
       testCmd <- testCommand cmdName
       if testCmd
         then do
           res <- execCricT $ toCmd to
-          return . Right . (hash `isPrefixOf`) . BS.unpack $ case res of
+          return . Just . (hash `isPrefixOf`) . BS.unpack $ case res of
             Success bs _       -> bs
             Failure _ bs _     -> bs
             Interrupted _ bs _ -> bs
             SSHError _         -> ""
         else
-          testHash hash rest elseCric
+          testHash hash rest
 
     testCommand :: Monad m => String -> CricT m Bool
     testCommand cmd = do
