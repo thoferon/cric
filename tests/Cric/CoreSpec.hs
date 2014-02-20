@@ -87,7 +87,7 @@ test = do
       result `shouldBe` Success "test output" ""
 
   describe "sendFile" $ do
-    it "sends a file with correct destination/permissions (and returns the size if no md5sum is found)" $ do
+    it "sends a file with correct destination/permissions" $ do
       let cric = sendFile "from" "to" dfto
           sendMock perm from to = if (perm, from, to) == (permissions dfto, "from", "to")
                                   then Just $ return 1337
@@ -96,7 +96,7 @@ test = do
           testMock cmds = Just $ return (Left 127, "", "")
           sshMock = SshMock [testMock] [sendMock]
       result <- liftIO $ testInstallWith sshMock cric logger context server
-      result `shouldBe` Left 1337
+      result `shouldBe` Nothing
 
     it "returns a boolean if a md5sum is found" $ do
       let cric = sendFile "from" "to" $ dfto { md5Hash = Just "test md5 hash" }
@@ -109,7 +109,7 @@ test = do
                           else Nothing
           sshMock = SshMock [testMock, md5Mock] [sendMock]
       result <- liftIO $ testInstallWith sshMock cric logger context server
-      result `shouldBe` Right True
+      result `shouldBe` Nothing
 
   describe "getServer" $ do
     it "returns the server" $ do

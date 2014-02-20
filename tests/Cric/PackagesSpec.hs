@@ -37,12 +37,12 @@ test = do
       let mock = mockCommand "which apt-get"   (0, "/bin/apt-get")
                . mockCommand "apt-get install" (0, "apt-get called")
                $ defaultSshMock
-      result <- testCricWith mock $ installPackage "haskell-platform"
+      result <- testCricWith mock $ installPackage ("haskell-platform" :: String)
       result `shouldBe` Right "apt-get called"
 
     context "when it can't find a package manager" $ do
       it "returns a NoPackageManagerFound error" $ do
-        result <- testCric $ installPackage "haskell-platform"
+        result <- testCric $ installPackage ("haskell-platform" :: String)
         result `shouldBe` Left NoPackageManagerFound
 
     context "when the installation fails" $ do
@@ -51,7 +51,7 @@ test = do
                  . mockCommand "rpm -i"    (1, "installation failed")
                  $ defaultSshMock
 
-        result <- testCricWith mock $ installPackage "haskell-platform"
+        result <- testCricWith mock $ installPackage ("haskell-platform" :: String)
         result `shouldBe`
           Left (UnknownPkgManagerError $ Failure 1 "installation failed" "")
 
@@ -60,12 +60,12 @@ test = do
       let mock = mockCommand "which apt-get"  (0, "/bin/apt-get")
                . mockCommand "apt-get remove" (0, "apt-get called")
                $ defaultSshMock
-      result <- testCricWith mock $ removePackage "haskell-platform"
+      result <- testCricWith mock $ removePackage ("haskell-platform" :: String)
       result `shouldBe` Right "apt-get called"
 
     context "when it can't find a package manager" $ do
       it "returns a NoPackageManagerFound error" $ do
-        result <- testCric $ removePackage "haskell-platform"
+        result <- testCric $ removePackage ("haskell-platform" :: String)
         result `shouldBe` Left NoPackageManagerFound
 
     context "when the removal fails" $ do
@@ -74,6 +74,6 @@ test = do
                  . mockCommand "rpm -e"    (1, "removal failed")
                  $ defaultSshMock
 
-        result <- testCricWith mock $ removePackage "haskell-platform"
+        result <- testCricWith mock $ removePackage ("haskell-platform" :: String)
         result `shouldBe`
           Left (UnknownPkgManagerError $ Failure 1 "removal failed" "")

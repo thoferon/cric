@@ -3,11 +3,11 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module SpecHelpers where
 
 import           Control.Monad.Error
-import           Control.Monad.Trans
 
 import           Data.List
 import           Data.Maybe
@@ -22,7 +22,7 @@ import           Cric.TypeDefs
 
 type ExecCommandMock
   = String -> Maybe (ErrorT String IO (Either Integer BS.ByteString, BS.ByteString, BS.ByteString))
-type SendFileMock = Int -> FilePath -> FilePath -> Maybe (IO Integer)
+type SendFileMock = Int -> FilePath -> FilePath -> Maybe (ErrorT String IO Integer)
 
 data SshMock = SshMock
   { execCommandMocks :: [ExecCommandMock]
@@ -40,6 +40,8 @@ instance Read LogLevel where
     | otherwise = []
 
 instance SshSession SshMock where
+  type SessionMonad SshMock a = ErrorT String IO a
+
   sshExecCommand (execCommandMocks -> fs) cmd =
       foldl' (\acc f -> fromMaybe acc $ f cmd) initValue fs
     where initValue = return (Left 42, "no mock found: " <> BS.pack cmd, "")
@@ -60,14 +62,16 @@ mockCommand cmd (code, out) sshMock =
 testInstall :: Cric a -> Logger IO -> Context -> Server -> IO a
 testInstall = testInstallWith defaultSshMock
 
-testInstallWith :: SshSession s => s -> Cric a -> Logger IO -> Context -> Server -> IO a
+testInstallWith :: SshMock -> Cric a -> Logger IO -> Context -> Server -> IO a
 testInstallWith mock cric logger context server = runCricT cric logger context server executor
-  where executor f = f mock
+  where
+    executor:: (SshMock -> ErrorT String IO a) -> IO (Either String a)
+    executor f = runErrorT $ f mock
 
 testCric :: Cric a -> IO a
 testCric cric = liftIO $ testInstall cric (\_ _ -> return ()) defaultContext defaultServer
 
-testCricWith :: SshSession s => s -> Cric a -> IO a
+testCricWith :: SshMock -> Cric a -> IO a
 testCricWith mock cric = liftIO $ testInstallWith mock cric (\_ _ -> return ()) defaultContext defaultServer
 
 -- it will not automatically close the handles (good enough for tests, at least for now)
@@ -91,3 +95,6 @@ testLogger = do
 
     makeLogger :: Handle -> LogLevel -> String -> IO ()
     makeLogger handle lvl msg = hPrint handle (lvl, msg)
+
+nullLogger :: Logger IO
+nullLogger _ _ = return ()
