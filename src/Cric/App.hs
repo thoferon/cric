@@ -11,6 +11,7 @@ import Cric
 data Options = Options
   { optServer  :: Server
   , optVerbose :: Bool
+  , optTrace   :: Bool
   } deriving (Show, Eq)
 
 parseServer :: Server -> Parser Server
@@ -36,6 +37,11 @@ parseOptions' server =
        <> long "verbose"
        <> help "Verbose mode"
         )
+  <*> flag False True
+        ( short 't'
+       <> long "trace"
+       <> help "Trace mode (even more verbose for debugging)"
+        )
 
 parseOptions :: String -> IO Options
 parseOptions description = do
@@ -54,8 +60,11 @@ defaultMain :: String        -- ^ Description of the program for the help
 defaultMain description config = do
   opts <- parseOptions description
   let server = optServer opts
+      logger | optTrace opts   = traceLogger
+             | optVerbose opts = debugLogger
+             | otherwise       = stdoutLogger
   res <- runCric config
-                 (if optVerbose opts then debugLogger else stdoutLogger)
+                 logger
                  defaultContext
                  server
                  (mkExecutor server)

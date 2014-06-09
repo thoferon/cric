@@ -11,7 +11,7 @@ module Cric
   -- Factories
   , defaultServer, autoServer
   , defaultContext
-  , stdoutLogger, debugLogger
+  , stdoutLogger, debugLogger, traceLogger
   , defaultFileTransferOptions, dfto
   -- Functions
   , runCric

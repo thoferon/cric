@@ -13,17 +13,19 @@ import           Cric
 data OperatingSystem
   = Linux
   | FreeBSD
+  | OpenBSD
   | UnknownOS BS.ByteString
   deriving (Show, Eq)
 
 -- | Find the operating system of the server.
 getOS :: MonadCric m => m OperatingSystem
 getOS = do
-  result <- run "uname -o"
+  result <- run "uname -o || uname -s"
   let name = firstLine result
   return $ case name of
     "GNU/Linux" -> Linux
     "FreeBSD"   -> FreeBSD
+    "OpenBSD"   -> OpenBSD
     other       -> UnknownOS other
 
 firstLine :: BS.ByteString -> BS.ByteString

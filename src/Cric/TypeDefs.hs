@@ -23,6 +23,7 @@ module Cric.TypeDefs
   , dfto
   , stdoutLogger
   , debugLogger
+  , traceLogger
   , autoServer
   ) where
 
@@ -33,6 +34,7 @@ import qualified Data.ByteString.Char8        as BS
 
 import           System.Directory
 import           System.FilePath
+import           System.IO
 
 import qualified Network.SSH.Client.SimpleSSH as SSH
 
@@ -127,7 +129,7 @@ instance SshSession SSH.Session where
 
 -- | The different levels used by the logger.
 data LogLevel
-  = Debug | Info | Notice | Warning | Error | Panic
+  = Trace | Debug | Info | Notice | Warning | Error | Panic
   deriving (Show, Eq)
 
 -- | A logger in a monad, e.g. 'CricT' IO.
@@ -135,17 +137,23 @@ type Logger m = LogLevel -> String -> m ()
 
 -- | Simple logger to stdout, ignoring log level 'Debug'.
 stdoutLogger :: MonadIO m => Logger m
+stdoutLogger Trace   _   = liftIO $ return ()
 stdoutLogger Debug   _   = liftIO $ return ()
-stdoutLogger Info    msg = liftIO . putStrLn $ "[Info] "    ++ msg
-stdoutLogger Notice  msg = liftIO . putStrLn $ "[Notice] "  ++ msg
-stdoutLogger Warning msg = liftIO . putStrLn $ "[Warning] " ++ msg
-stdoutLogger Error   msg = liftIO . putStrLn $ "[Error] "   ++ msg
-stdoutLogger Panic   msg = liftIO . putStrLn $ "[Panic] "   ++ msg
+stdoutLogger Info    msg = liftIO . hPutStrLn stderr $ "[Info] "    ++ msg
+stdoutLogger Notice  msg = liftIO . hPutStrLn stderr $ "[Notice] "  ++ msg
+stdoutLogger Warning msg = liftIO . hPutStrLn stderr $ "[Warning] " ++ msg
+stdoutLogger Error   msg = liftIO . hPutStrLn stderr $ "[Error] "   ++ msg
+stdoutLogger Panic   msg = liftIO . hPutStrLn stderr $ "[Panic] "   ++ msg
 
 -- | Same as 'stdoutLogger' but displaying log level 'Debug'.
 debugLogger :: MonadIO m => Logger m
-debugLogger Debug msg = liftIO . putStrLn $ "[Debug] "   ++ msg
+debugLogger Debug msg = liftIO . hPutStrLn stderr $ "[Debug] " ++ msg
 debugLogger lvl   msg = stdoutLogger lvl msg
+
+-- | Same as 'traceLogger' but displaying log level 'Trace'.
+traceLogger :: MonadIO m => Logger m
+traceLogger Trace msg = liftIO . hPutStrLn stderr $ "[Trace] " ++ msg
+traceLogger lvl   msg = debugLogger lvl msg
 
 -- | Authentication type, either with public keys (RSA) or by username/password.
 data AuthenticationType = KeysAuthentication

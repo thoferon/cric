@@ -40,11 +40,15 @@ createUser :: MonadCric m
               -> m Result
 createUser u opts = do
     logMsg Info $ "Creating user " ++ u ++ " ..."
+    os <- getOS
+    let cmd = case os of
+                OpenBSD -> "useradd" -- adduser would go interactive without options
+                _       -> "adduser"
     let cmdWithOptions = addLoginGroup (loginGroup opts)
                        . addGroups (groups opts)
                        . addUID (uid opts)
                        . addShell (shell opts)
-                       $ "adduser"
+                       $ cmd ++ " -m"
     exec $ cmdWithOptions ++ " " ++ u
   where
     addShell Nothing        = id

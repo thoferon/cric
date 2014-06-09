@@ -51,7 +51,7 @@ test = do
     it "adds the context" $ do
       let cric = exec "echo \"test\" 'test'"
           context' = defaultContext { currentUser = "user", currentDir = "dir", currentEnv = [("a", "1")] }
-          mockFunc cmd = if cmd == "sudo su user -c 'cd dir; export a=1; echo \"test\" \\'test\\''"
+          mockFunc cmd = if cmd == "sudo -u user -H -c - sh -c \"cd dir; export a=1; echo \\\"test\\\" 'test'\""
                           then Just $ return (Left 0, "successful", "")
                           else Nothing
           sshMock = SshMock [mockFunc] []
@@ -93,7 +93,8 @@ test = do
                                   then Just $ return 1337
                                   else Nothing
           -- testMock is used to disable the checksum and return 1337
-          testMock cmds = Just $ return (Left 127, "", "")
+          testMock cmd | "md5" `isInfixOf` cmd = Just $ return (Left 127, "", "")
+                       | otherwise             = Just $ return (Left 0, BS.pack cmd, "")
           sshMock = SshMock [testMock] [sendMock]
       result <- liftIO $ testInstallWith sshMock cric logger context server
       result `shouldBe` Nothing
@@ -101,10 +102,11 @@ test = do
     it "returns a boolean if a md5sum is found" $ do
       let cric = sendFile "from" "to" $ dfto { md5Hash = Just "test md5 hash" }
           sendMock perm from to = Just $ return 1337
-          testMock cmd = if "which md5" `isInfixOf` cmd
-                           then Just $ return (Left 0, "/usr/bin/md5\n", "")
-                           else Nothing
-          md5Mock cmd = if "md5 -q to" `isInfixOf` cmd
+          testMock cmd
+            | "which md5" `isInfixOf` cmd = Just $ return (Left 0, "/usr/bin/md5\n", "")
+            | "mv" `isInfixOf` cmd = Just $ return (Left 0, BS.pack cmd, "")
+            | otherwise = Nothing
+          md5Mock cmd = if "md5 -q /tmp/from.cric-tmp" `isInfixOf` cmd
                           then Just $ return (Left 0, "test md5 hash\n", "")
                           else Nothing
           sshMock = SshMock [testMock, md5Mock] [sendMock]
